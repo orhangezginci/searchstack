@@ -13,18 +13,6 @@
 
 ---
 
-## The Demo
-
-Type `I have a hangover` into the search bar.
-
-Semantic search returns **Bloody Mary** and **Pho Bo**. Keyword search returns **nothing** — because the word "hangover" doesn't appear anywhere in the dataset.
-
-That gap is the whole point.
-
-The same query engine understands `I have the flu` → Honey Ginger Tea and Chicken Noodle Soup, or `a warming drink for a cold evening` → Mulled Wine, Hot Toddy, Chai Latte — without a single matching keyword in any recipe description.
-
----
-
 ## What This Project Demonstrates
 
 ### 1. Semantic Search vs Keyword Search — side by side
@@ -41,25 +29,35 @@ class VectorDBAdapter(ABC):
 ```
 
 ### 3. Event-Driven Microservice Architecture
-Ingestion publishes to a **RabbitMQ fanout exchange**. The vector search service and keyword search service each consume independently — fully decoupled. Adding a new index (e.g. a graph DB) means adding a new consumer, not touching existing code.
+Ingestion publishes to a **RabbitMQ fanout exchange**. Vector search and keyword search consume independently — fully decoupled. Adding a new index means adding a new consumer, not touching existing code.
 
 ```
 POST /ingest
      │
      ▼
-[ingestion-service] ──embed──► [embedding-service]
+[ingestion-service] ──► [embedding-service]
      │
      ▼
-[RabbitMQ fanout: ingestion.events]
+[RabbitMQ fanout exchange]
      ├──► [vector-search-service]  →  Qdrant
      └──► [keyword-search-service] →  Elasticsearch
 ```
 
 ### 4. 3D Embedding Space Visualisation
-Every search renders a live **PCA-reduced 3D projection** of the embedding space using React Three Fiber. Data points are heatmap-coloured by cosine similarity — cold blue for distant, hot red for the closest match, which pulses. The threshold sphere shows the relevance boundary in real time.
+Every search renders a live **PCA-reduced 3D projection** of the embedding space using React Three Fiber. Data points are heatmap-coloured by cosine similarity — cold blue for distant, pulsing neon red for the closest match. The threshold sphere marks the relevance boundary in real time.
 
 ### 5. Where Small Language Models Hit Their Limit
-Searching `a romantic dinner for two` returns weak results. This is intentional and documented — `all-mpnet-base-v2` excels at paraphrase similarity but doesn't bridge the gap between ingredient lists and social occasion semantics. The same query with `text-embedding-3-large` would work. The architecture is model-agnostic; swapping is a one-line change in the embedding service.
+Searching `a romantic dinner for two` returns weak results. This is intentional — `all-mpnet-base-v2` excels at paraphrase similarity but can't bridge ingredient lists to social occasion semantics. The same query with `text-embedding-3-large` would work. The architecture is model-agnostic; swapping is a one-line change in the embedding service.
+
+---
+
+## The Demo
+
+Type `I have a hangover` into the search bar.
+
+Semantic search returns **Bloody Mary** and **Pho Bo**. Keyword search returns **nothing** — because the word "hangover" doesn't appear anywhere in the dataset.
+
+That gap is the whole point.
 
 ---
 
@@ -71,12 +69,12 @@ cd search-arena
 docker compose up -d --build
 ```
 
-That's it. Docker Compose handles the full startup sequence:
+Docker Compose handles the full startup sequence automatically:
 
-1. RabbitMQ, Qdrant, Elasticsearch start and become healthy
+1. RabbitMQ, Qdrant, Elasticsearch start and pass healthchecks
 2. Embedding, vector-search, keyword-search services start
 3. Ingestion service connects to RabbitMQ
-4. Seeder automatically loads 20 curated recipes
+4. Seeder loads 20 curated recipes into the pipeline
 5. API gateway and frontend start
 
 Open **http://localhost:3000**
@@ -100,32 +98,28 @@ Open **http://localhost:3000**
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────┐
-│                    Browser :3000                     │
-│         React + TypeScript + React Three Fiber       │
-└────────────────────┬────────────────────────────────┘
-                     │ REST
-┌────────────────────▼────────────────────────────────┐
-│                 api-gateway :8000                    │
-│                   FastAPI                            │
-└──────┬─────────────────────────────┬────────────────┘
-       │                             │
-┌──────▼──────┐             ┌────────▼────────┐
-│  embedding  │             │  keyword-search │
-│  service    │             │  service :8003  │
-│  :8001      │             │  Elasticsearch  │
-│  all-mpnet  │             └─────────────────┘
-└──────┬──────┘
-       │                    ┌─────────────────┐
-       │                    │  vector-search  │
-       │                    │  service :8002  │
-       │                    │  Qdrant adapter │
-       │                    └─────────────────┘
-┌──────▼──────────────────────────────────────────────┐
-│              ingestion-service :8004                 │
-│   embed → publish to RabbitMQ fanout exchange        │
-└─────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    Browser["Browser :3000\nReact · TypeScript · Three.js"]
+    Gateway["api-gateway :8000\nFastAPI"]
+    Embed["embedding-service :8001\nall-mpnet-base-v2 · 768d"]
+    Vector["vector-search-service :8002\nQdrant adapter · PCA"]
+    Keyword["keyword-search-service :8003\nElasticsearch BM25"]
+    Ingest["ingestion-service :8004"]
+    MQ["RabbitMQ\nfanout exchange"]
+    Qdrant["Qdrant :6333"]
+    ES["Elasticsearch :9200"]
+
+    Browser -->|REST| Gateway
+    Gateway -->|embed query| Embed
+    Gateway -->|search| Vector
+    Gateway -->|search| Keyword
+    Ingest -->|embed-batch| Embed
+    Ingest -->|publish| MQ
+    MQ -->|consume| Vector
+    MQ -->|consume| Keyword
+    Vector --> Qdrant
+    Keyword --> ES
 ```
 
 ## Services
