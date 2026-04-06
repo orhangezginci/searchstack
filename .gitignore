@@ -22,7 +22,6 @@ images/
 
 # Misc output files
 *.md
-!CLAUDE.md
 !README.md
 !research.md
 !ROADMAP.md
