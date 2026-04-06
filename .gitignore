@@ -24,4 +24,5 @@ images/
 *.md
 !CLAUDE.md
 !README.md
+!research.md
 .claude/

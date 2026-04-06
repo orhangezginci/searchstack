@@ -21,6 +21,7 @@ interface SearchResponse {
   query: string
   semantic: Result[]
   keyword: Result[]
+  hybrid: Result[]
 }
 
 // ── Image search types ───────────────────────────────────────────────────────
@@ -54,6 +55,27 @@ const RECIPE_SUGGESTIONS = [
   'a romantic dinner for two',
 ]
 
+const BENCHMARKS = [
+  {
+    winner: 'semantic' as const,
+    label: 'Semantic Wins',
+    query: 'I have the flu',
+    why: 'Keyword returns Chocolate Lava Cake at #1 — pure token coincidence. Semantic finds Honey Ginger Tea and Chicken Soup through meaning.',
+  },
+  {
+    winner: 'hybrid' as const,
+    label: 'Hybrid Wins',
+    query: 'street food quick and spicy',
+    why: 'Semantic fixates on "spicy" → Vindaloo. Keyword misfires completely → Noodle Soup. Hybrid finds Pad Thai — ranked in both lists — and correctly promotes the one result both engines agree belongs in the conversation.',
+  },
+  {
+    winner: 'keyword' as const,
+    label: 'Keyword Wins',
+    query: 'szechuan',
+    why: 'A precise technical term with an exact match in the corpus. Keyword is surgical. Semantic adds irrelevant noise.',
+  },
+]
+
 const IMAGE_SUGGESTIONS = [
   'romantic sunset at the beach',
   'something dramatic and stormy',
@@ -83,11 +105,17 @@ function ScoreBar({ score, max, color }: { score: number; max: number; color: st
 
 // ── Recipe result column ─────────────────────────────────────────────────────
 
+const COLUMN_COLOR: Record<string, string> = {
+  semantic: '#7c3aed',
+  hybrid:   '#10b981',
+  keyword:  '#ea580c',
+}
+
 function ResultColumn({
   title, badge, desc, type, results, query,
 }: {
   title: string; badge: string; desc: string
-  type: 'semantic' | 'keyword'; results: Result[]; query: string
+  type: 'semantic' | 'hybrid' | 'keyword'; results: Result[]; query: string
 }) {
   const maxScore = results.length > 0 ? results[0].score : 1
 
@@ -143,7 +171,7 @@ function ResultColumn({
               <div className="result-title">{r.payload.title ?? 'Result'}</div>
               <div className="result-cuisine">{r.payload.cuisine}</div>
               <div className="result-text">{r.payload.text}</div>
-              <ScoreBar score={r.score} max={maxScore} color="#7c3aed" />
+              <ScoreBar score={r.score} max={maxScore} color={COLUMN_COLOR[type]} />
             </motion.div>
           ))}
         </AnimatePresence>
@@ -367,6 +395,17 @@ export default function App() {
       {/* ── Recipe mode ── */}
       {mode === 'recipes' && (
         <>
+          <div className="benchmark-strip">
+            {BENCHMARKS.map((b) => (
+              <button key={b.query} className={`benchmark-card benchmark-${b.winner}`}
+                onClick={() => { setRecipeQuery(b.query); handleRecipeSearch(b.query, threshold) }}>
+                <span className={`benchmark-badge benchmark-badge-${b.winner}`}>{b.label}</span>
+                <span className="benchmark-query">"{b.query}"</span>
+                <span className="benchmark-why">{b.why}</span>
+              </button>
+            ))}
+          </div>
+
           <form className="search-form" onSubmit={(e) => { e.preventDefault(); handleRecipeSearch() }}>
             <input className="search-input" value={recipeQuery}
               onChange={(e) => setRecipeQuery(e.target.value)}
@@ -418,6 +457,11 @@ export default function App() {
                 title="Semantic Search" badge="all-mpnet-base-v2"
                 desc="Converts your query into a 768-dim vector and finds the nearest recipes in embedding space — understands meaning, not just words."
                 type="semantic" results={recipeResults.semantic} query={recipeResults.query}
+              />
+              <ResultColumn
+                title="Hybrid Search" badge="RRF 70/30"
+                desc="Combines semantic and keyword rankings via Reciprocal Rank Fusion — 70% semantic weight, 30% keyword. Best of both worlds."
+                type="hybrid" results={recipeResults.hybrid} query={recipeResults.query}
               />
               <ResultColumn
                 title="Keyword Search" badge="Elasticsearch BM25"

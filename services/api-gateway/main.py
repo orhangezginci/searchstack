@@ -112,10 +112,32 @@ async def search(request: SearchRequest):
     semantic_results = semantic_response.json().get("results", []) if semantic_response.status_code == 200 else []
     keyword_results = keyword_response.json().get("results", []) if keyword_response.status_code == 200 else []
 
+    # Hybrid: rerank semantic results boosted by keyword signal
+    # Only semantic candidates qualify — keyword-only results are excluded
+    K = 60
+    keyword_ranks = {
+        r["payload"].get("title", r["id"]): rank
+        for rank, r in enumerate(keyword_results)
+    }
+    fused: dict[str, float] = {}
+    payloads: dict[str, dict] = {}
+    for rank, r in enumerate(semantic_results):
+        key = r["payload"].get("title", r["id"])
+        score = 0.7 / (rank + K)
+        if key in keyword_ranks:
+            score += 0.3 / (keyword_ranks[key] + K)
+        fused[key] = score
+        payloads[key] = r["payload"]
+    hybrid_results = [
+        {"id": key, "score": round(score, 6), "payload": payloads[key]}
+        for key, score in sorted(fused.items(), key=lambda x: x[1], reverse=True)[:request.limit]
+    ]
+
     return {
         "query": request.query,
         "semantic": semantic_results,
         "keyword": keyword_results,
+        "hybrid": hybrid_results,
     }
 
 
