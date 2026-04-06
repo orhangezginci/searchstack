@@ -1,4 +1,14 @@
 services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   rabbitmq:
     image: rabbitmq:3-management
     ports:
@@ -58,6 +68,30 @@ services:
       retries: 10
       start_period: 60s
 
+  image-downloader:
+    build: ./services/image-downloader
+    volumes:
+      - ./images:/images
+    environment:
+      - IMAGES_DIR=/images
+    restart: "no"
+
+  clip-embedding-service:
+    build: ./services/clip-embedding-service
+    ports:
+      - "8005:8005"
+    volumes:
+      - ./images:/images:ro
+    environment:
+      - PYTHONUNBUFFERED=1
+      - IMAGES_DIR=/images
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8005/health')"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 90s
+
   vector-search-service:
     build: ./services/vector-search-service
     ports:
@@ -114,14 +148,22 @@ services:
     ports:
       - "8000:8000"
     depends_on:
+      redis:
+        condition: service_healthy
       embedding-service:
         condition: service_healthy
       vector-search-service:
         condition: service_healthy
       keyword-search-service:
         condition: service_healthy
+      clip-embedding-service:
+        condition: service_healthy
+    volumes:
+      - ./images:/images:ro
     environment:
       - PYTHONUNBUFFERED=1
+      - CLIP_EMBEDDING_SERVICE_URL=http://clip-embedding-service:8005
+      - REDIS_HOST=redis
 
   frontend:
     build: ./services/frontend
@@ -129,6 +171,8 @@ services:
       - "3000:3000"
     depends_on:
       - api-gateway
+    volumes:
+      - ./images:/app/public/images:ro
     environment:
       - VITE_API_URL=http://localhost:8000
 
@@ -140,6 +184,23 @@ services:
     volumes:
       - ./seed.sh:/seed.sh
     command: sh /seed.sh
+    restart: "no"
+
+  image-seeder:
+    build: ./services/image-seeder
+    depends_on:
+      image-downloader:
+        condition: service_completed_successfully
+      clip-embedding-service:
+        condition: service_healthy
+      vector-search-service:
+        condition: service_healthy
+    volumes:
+      - ./images:/images:ro
+    environment:
+      - IMAGES_DIR=/images
+      - CLIP_URL=http://clip-embedding-service:8005
+      - VECTOR_URL=http://vector-search-service:8002
     restart: "no"
 
 volumes:

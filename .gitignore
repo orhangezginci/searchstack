@@ -14,11 +14,14 @@ dist/
 qdrant_storage/
 elasticsearch_data/
 
+# Images (downloaded at runtime)
+images/
+
 # OS
 .DS_Store
 
 # Misc output files
-*.txt
 *.md
 !CLAUDE.md
 !README.md
+.claude/

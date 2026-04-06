@@ -60,7 +60,7 @@ function Stars() {
   )
 }
 
-// ── Recipe dot ────────────────────────────────────────────────────────────────
+// ── Dot ───────────────────────────────────────────────────────────────────────
 function RecipeDot({ pos, normalizedScore, isTop, title, onHover }: {
   pos: [number, number, number]
   normalizedScore: number | null  // 0–1 relative to current result set
@@ -244,7 +244,7 @@ function Scene({ data, threshold }: { data: PositionsData; threshold: number }) 
             pos={[doc.cx, doc.cy, doc.cz]}
             normalizedScore={normalizedScore}
             isTop={doc.id === topId}
-            title={doc.payload.title ?? 'Recipe'}
+            title={doc.payload.title ?? doc.payload.filename ?? 'Item'}
             onHover={(t, p) => setHovered(t && p ? { title: t, pos: p } : null)}
           />
         )
@@ -271,20 +271,23 @@ function Scene({ data, threshold }: { data: PositionsData; threshold: number }) 
 }
 
 // ── Main export ───────────────────────────────────────────────────────────────
-export default function EmbeddingSpace({ query, threshold }: {
+export default function EmbeddingSpace({ query, threshold, collection = 'recipes' }: {
   query: string
   threshold: number
+  collection?: 'recipes' | 'images'
 }) {
   const [data, setData] = useState<PositionsData | null>(null)
   const [loading, setLoading] = useState(false)
 
+  const endpoint = collection === 'images' ? '/positions/images' : '/positions'
+
   useEffect(() => {
     if (!query) return
     setLoading(true)
-    fetch(`${API_URL}/positions`, {
+    fetch(`${API_URL}${endpoint}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query, collection: 'recipes' }),
+      body: JSON.stringify({ query, collection }),
     })
       .then(r => r.json())
       .then(setData)

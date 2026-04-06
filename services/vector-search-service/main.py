@@ -1,6 +1,7 @@
 import os
 import json
 import time
+import uuid
 import threading
 import pika
 import numpy as np
@@ -84,6 +85,49 @@ def health():
     return {"status": "healthy", "service": "vector-search-service"}
 
 
+class UpsertDocument(BaseModel):
+    id: str
+    vector: list[float]
+    payload: dict = {}
+
+class UpsertRequest(BaseModel):
+    collection: str
+    documents: list[UpsertDocument]
+
+@app.post("/upsert")
+def upsert(request: UpsertRequest):
+    if not request.documents:
+        return {"status": "ok", "count": 0}
+    adapter.create_collection(name=request.collection, dimension=len(request.documents[0].vector))
+    adapter.insert(
+        collection=request.collection,
+        ids=[d.id for d in request.documents],
+        vectors=[d.vector for d in request.documents],
+        payloads=[d.payload for d in request.documents],
+    )
+    return {"status": "ok", "count": len(request.documents)}
+
+
+class VectorsRequest(BaseModel):
+    collection: str
+
+
+@app.post("/vectors")
+def get_vectors(request: VectorsRequest):
+    """Return all raw vectors for a collection keyed by filename."""
+    points, _ = adapter.client.scroll(
+        collection_name=request.collection,
+        with_vectors=True,
+        with_payload=True,
+        limit=1000,
+    )
+    return {
+        p.payload["filename"]: p.vector
+        for p in points
+        if "filename" in p.payload
+    }
+
+
 @app.post("/search")
 def search(request: SearchRequest):
     results = adapter.search(
@@ -149,4 +193,26 @@ def positions(request: PositionsRequest):
         qc = coords[-1]
         result["query"] = {"x": float(qc[0]), "y": float(qc[1]), "z": float(qc[2])}
 
+    return result
+
+
+class RetrieveRequest(BaseModel):
+    collection: str
+    ids: list[str]  # original string IDs (e.g. filenames)
+
+
+@app.post("/retrieve")
+def retrieve(request: RetrieveRequest):
+    point_ids = [str(uuid.uuid5(uuid.NAMESPACE_DNS, id_)) for id_ in request.ids]
+    points = adapter.client.retrieve(
+        collection_name=request.collection,
+        ids=point_ids,
+        with_vectors=True,
+        with_payload=True,
+    )
+    # Map back from uuid → original id via payload
+    result = {}
+    for p in points:
+        filename = p.payload.get("filename") or p.payload.get("id", str(p.id))
+        result[filename] = p.vector
     return result
