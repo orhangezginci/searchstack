@@ -15,9 +15,9 @@ docker compose up -d --build
 
 Most semantic search setups require stitching together embeddings, vector databases, keyword search, and APIs yourself. Search Arena gives you that entire stack already wired — built as a real system with production-grade components. You only add your data pipeline.
 
-![Recipe search — semantic vs keyword vs hybrid](docs/screenshot-recipe-search.png)
+![Recipe search — semantic vs keyword vs hybrid](docs/demo-recipe-search.gif)
 
-![Image search — CLIP natural language over 50 photos](docs/screenshot-image-search.png)
+![Image search — CLIP natural language over 50 photos](docs/demo-image-search.gif)
 
 ![Python](https://img.shields.io/badge/Python-3.11-3776ab?style=flat-square&logo=python&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178c6?style=flat-square&logo=typescript&logoColor=white)
@@ -146,7 +146,22 @@ Try these queries to see the three engines compared live:
    all work on your content automatically
 ```
 
-See [docs/tutorial.md](docs/tutorial.md) for a full walkthrough building a PDF search system from scratch.
+### Example: PDF search
+
+Your ingestion service publishes one message per page:
+
+```json
+{ "text": "...", "title": "report.pdf — p.4", "collection": "pdfs" }
+```
+
+Search Arena automatically:
+- embeds the text into a 768-dimensional vector
+- indexes it in Qdrant + Elasticsearch
+- makes it searchable via `POST /search` with semantic, keyword, and hybrid ranking
+
+No additional wiring required.
+
+👉 Full walkthrough: [docs/tutorial.md](docs/tutorial.md)
 
 ---
 

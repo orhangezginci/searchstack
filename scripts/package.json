@@ -1,0 +1,11 @@
+{
+  "name": "search-arena-scripts",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "record": "node record-demo.js"
+  },
+  "dependencies": {
+    "playwright": "^1.43.0"
+  }
+}
