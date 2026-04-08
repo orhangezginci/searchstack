@@ -276,3 +276,9 @@ The same pattern works for any content type. The only thing that changes is how 
 | Notion export | markdown parser | sections |
 
 In every case: read → chunk → publish to `ingestion.events` with your `collection` name. Search Arena handles the rest.
+
+---
+
+## Final result
+
+The complete code from this tutorial is available in [`examples/pdf-ingestion/`](../examples/pdf-ingestion/). No explanations — just the working files, ready to copy into your project.

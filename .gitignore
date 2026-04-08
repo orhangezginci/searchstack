@@ -26,4 +26,5 @@ images/
 !research.md
 !ROADMAP.md
 !docs/**/*.md
+!examples/**/*.md
 .claude/
