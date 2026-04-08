@@ -1,18 +1,12 @@
-# Tutorial: Add PDF Search to Search Arena
+# Tutorial: Build a PDF Search System
 
-This tutorial follows the exact workflow described in the README:
-
-```
-git clone → run → add your pipeline → search your content
-```
-
-You will not touch any existing service. You will not modify any existing file except `docker-compose.yml`. By the end you will have semantic, keyword, and hybrid search running over your own PDF library — using the same API and the same infrastructure that powers the recipe demo.
-
-**Prerequisites:** Docker, Docker Compose, `curl`, any PDF file
+**What you will build:** semantic, keyword, and hybrid search over your own PDF library.  
+**What you will touch:** one new directory, one block in `docker-compose.yml`. Nothing else.  
+**Prerequisites:** Docker, Docker Compose, `curl`, any PDF file.
 
 ---
 
-## Step 1 — Clone and run
+## 1. Run it
 
 ```bash
 git clone https://github.com/orhangezginci/search-arena.git
@@ -20,33 +14,64 @@ cd search-arena
 docker compose up -d --build
 ```
 
-Wait for everything to start (~3–5 minutes on first boot, models download automatically).
-
-Open **http://localhost:3000** — you should see the recipe demo working. Try `I have a hangover`. Semantic finds Bloody Mary. Keyword finds nothing. That gap is what you are about to give your PDFs.
+Open **http://localhost:3000**. The stack is running with a demo recipe dataset.
 
 ---
 
-## Step 2 — Understand what you are extending
+## 2. See what you are working with
 
-Open **http://localhost:15672** (RabbitMQ dashboard, guest / guest).
+Try two queries in the search bar:
 
-You will see a fanout exchange called `ingestion.events`. Every time a document is ingested, a message lands here and fans out to two consumers:
-- `vector-search-service` → embeds it → stores in Qdrant
-- `keyword-search-service` → indexes it → stores in Elasticsearch
+**`I have a hangover`**  
+Semantic finds Bloody Mary and Pho Bo. Keyword finds nothing — the word "hangover" doesn't appear in any recipe. That's the gap semantic search fills.
 
-You do not need to touch either of those services. You just need to **publish to that exchange**. That is the only contract.
+**`szechuan`**  
+Keyword wins. Exact token match — surgical and fast. Semantic adds noise.
+
+You just saw the core claim: semantic and keyword search have different strengths. Hybrid combines both. Your PDFs are about to get the same treatment.
 
 ---
 
-## Step 3 — Create your PDF ingestion service
+## 3. Make a small change
 
-Inside the cloned repo, create a new directory alongside the existing services:
+Before adding anything new, try pointing the existing API at a collection that doesn't exist yet:
+
+```bash
+curl -s -X POST http://localhost:8000/search \
+  -H "Content-Type: application/json" \
+  -d '{"query": "test", "collection": "docs", "limit": 3}' \
+  | python3 -m json.tool
+```
+
+You get back empty results — no error, no crash. The API accepts any collection name. There is nothing to register or configure in advance. That is intentional.
+
+---
+
+## 4. Understand the only contract
+
+Open **http://localhost:15672** (RabbitMQ, guest / guest). You will see a fanout exchange called `ingestion.events`.
+
+This is the only interface between your pipeline and the core. Any service that publishes a JSON message here gets automatic embedding, automatic vector indexing, and automatic keyword indexing — without touching a single existing service.
+
+The message format:
+
+```json
+{
+  "text": "content to index",
+  "title": "display name",
+  "collection": "docs"
+}
+```
+
+Any extra fields you add are stored in the Qdrant payload and returned in search results.
+
+---
+
+## 5. Add your PDF ingestion service
 
 ```bash
 mkdir services/pdf-ingestion-service
 ```
-
-Create three files:
 
 **`services/pdf-ingestion-service/requirements.txt`**
 
@@ -132,9 +157,9 @@ CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8006"]
 
 ---
 
-## Step 4 — Register it in docker-compose.yml
+## 6. Register it in docker-compose.yml
 
-This is the only existing file you touch. Add one service block:
+This is the only existing file you modify. Add one block:
 
 ```yaml
   pdf-ingestion-service:
@@ -154,13 +179,13 @@ This is the only existing file you touch. Add one service block:
       retries: 5
 ```
 
-Start it without touching anything else:
+Start it:
 
 ```bash
 docker compose up -d --build pdf-ingestion-service
 ```
 
-Confirm it is running:
+Verify:
 
 ```bash
 curl http://localhost:8006/health
@@ -169,15 +194,13 @@ curl http://localhost:8006/health
 
 ---
 
-## Step 5 — Ingest your PDFs
+## 7. Ingest your PDFs
 
 ```bash
 curl -X POST http://localhost:8006/ingest \
   -F "file=@your_document.pdf" \
   -F "collection=docs"
 ```
-
-Response:
 
 ```json
 {
@@ -188,43 +211,68 @@ Response:
 }
 ```
 
-Check the RabbitMQ dashboard — you will see 11 messages fan out to both consumers. Check the Qdrant dashboard at **http://localhost:6333/dashboard** — a `docs` collection appears automatically. You did not configure either of these. They just work.
+Watch the RabbitMQ dashboard — 11 messages fan out to both consumers automatically.  
+Check **http://localhost:6333/dashboard** — a `docs` collection appears. You didn't create it.
 
-Ingest as many PDFs as you like. They all land in the same collection:
+Ingest more files the same way:
 
 ```bash
 curl -X POST http://localhost:8006/ingest \
-  -F "file=@another_document.pdf" \
+  -F "file=@another.pdf" \
   -F "collection=docs"
 ```
 
 ---
 
-## Step 6 — Search your documents
-
-Same API the recipe demo uses. Just point it at your collection:
+## 8. Search your documents
 
 ```bash
 curl -s -X POST http://localhost:8000/search \
   -H "Content-Type: application/json" \
-  -d '{
-    "query": "your question here",
-    "collection": "docs",
-    "limit": 5
-  }' | python3 -m json.tool
+  -d '{"query": "your question here", "collection": "docs", "limit": 5}' \
+  | python3 -m json.tool
 ```
 
-Each result includes `title` with the filename and page number so you always know where the match came from.
-
-Try the same query with different meanings. Notice:
-- `semantic` finds the answer even when the exact words differ
-- `keyword` finds exact token matches
-- `hybrid` gives the best of both
+Each result includes `title` (filename + page number) so you always know where the match came from. Try the same question with the `semantic`, `keyword`, and `hybrid` fields in the response — notice when each one gets it right and when it doesn't.
 
 ---
 
-## What just happened
+## Why it worked
 
-You added **one new directory** and **one block in docker-compose.yml**. You did not modify a single existing service. The vector search, keyword search, embedding, and API gateway handled your PDFs exactly the same way they handle recipes — because the only contract is: *publish a JSON chunk to the RabbitMQ exchange with a `collection` field*.
+Now that you've done it, here's what happened under the hood:
 
-That is the architecture of Search Arena. Clone it, add your pipeline, search your content.
+```
+Your PDF service         Core (unchanged)
+─────────────────        ────────────────────────────────────────
+POST /ingest
+  → extract pages
+  → build chunks
+  → publish to ──────►  RabbitMQ fanout exchange
+                              │
+                              ├──► embedding-service → vector
+                              │         │
+                              │         ▼
+                              │    vector-search-service → Qdrant
+                              │
+                              └──► keyword-search-service → Elasticsearch
+
+POST /search  ◄──────────────  api-gateway (hybrid ranking)
+```
+
+You published messages. The core did the rest. This is the same path the recipe demo uses — your pipeline just produces different chunks with a different collection name.
+
+---
+
+## Where to go next
+
+The same pattern works for any content type. The only thing that changes is how you read and chunk the content:
+
+| Content type | Read with | Chunk by |
+|---|---|---|
+| Emails | `imaplib` | one email per chunk |
+| Calendar | `icalendar` | one event per chunk |
+| Web pages | `httpx` + `beautifulsoup4` | paragraphs |
+| Word docs | `python-docx` | paragraphs |
+| Notion export | markdown parser | sections |
+
+In every case: read → chunk → publish to `ingestion.events` with your `collection` name. Search Arena handles the rest.
