@@ -1,12 +1,34 @@
 # Example: PDF Ingestion Service
 
-This is the final result of [docs/tutorial.md](../../docs/tutorial.md).
+Add semantic search over your own PDFs to Search Arena in 5 steps.
 
-Copy this directory into your Search Arena clone as `services/pdf-ingestion-service/`, add the block below to `docker-compose.yml`, and you have semantic search over your PDFs.
+For the full explanation of how and why this works, see [docs/tutorial.md](../../docs/tutorial.md).
 
 ---
 
-## docker-compose.yml block
+## 1. Clone and start Search Arena
+
+```bash
+git clone https://github.com/orhangezginci/search-arena.git
+cd search-arena
+docker compose up -d --build
+```
+
+Wait until everything is healthy (~3–5 minutes on first boot).
+
+---
+
+## 2. Copy this example into the project
+
+```bash
+cp -r examples/pdf-ingestion services/pdf-ingestion-service
+```
+
+---
+
+## 3. Add the service to docker-compose.yml
+
+Open `docker-compose.yml` and add this block alongside the other services:
 
 ```yaml
   pdf-ingestion-service:
@@ -26,7 +48,24 @@ Copy this directory into your Search Arena clone as `services/pdf-ingestion-serv
       retries: 5
 ```
 
-## Ingest
+---
+
+## 4. Start the service
+
+```bash
+docker compose up -d --build pdf-ingestion-service
+```
+
+Verify it's running:
+
+```bash
+curl http://localhost:8006/health
+# {"status":"ok","service":"pdf-ingestion-service"}
+```
+
+---
+
+## 5. Ingest your PDFs
 
 ```bash
 curl -X POST http://localhost:8006/ingest \
@@ -34,14 +73,15 @@ curl -X POST http://localhost:8006/ingest \
   -F "collection=docs"
 ```
 
+Repeat for as many files as you like.
+
+---
+
 ## Search
 
 ```bash
 curl -s -X POST http://localhost:8000/search \
   -H "Content-Type: application/json" \
-  -d '{"query": "your question", "collection": "docs", "limit": 5}'
+  -d '{"query": "your question", "collection": "docs", "limit": 5}' \
+  | python3 -m json.tool
 ```
-
----
-
-For the full step-by-step explanation of how and why this works, see [docs/tutorial.md](../../docs/tutorial.md).
