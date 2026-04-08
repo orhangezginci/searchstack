@@ -22,12 +22,15 @@ A fully working, containerized demo of three retrieval strategies (semantic, key
 ## Phase 2 — PDF / Document Pipeline
 *First real-world use case beyond the demo*
 
-- [ ] **PDF extraction service** — new microservice using PyMuPDF or pdfplumber. Accepts a PDF, chunks it by page or paragraph, publishes chunks to the RabbitMQ fanout exchange.
+- [ ] **PDF extraction service** — new microservice using PyMuPDF or pdfplumber. Accepts a PDF, chunks it by page or paragraph, publishes chunks to the RabbitMQ fanout exchange. No changes to any other service — the event bus absorbs the new producer transparently.
 - [ ] **Schema-flexible metadata** — replace hardcoded `title/cuisine/text` fields with configurable metadata keys so any document type can be indexed without changing the search services.
 - [ ] **Chunk-aware result rendering** — results show the matched excerpt and page number, not just the document title.
 - [ ] **Reference implementation** — a working `docker-compose.pdf.yml` that spins up the full stack configured for document search. Pull, drop PDFs into a folder, search.
 
 This phase proves the core claim: **add a pipeline, get intelligent search out of the box.**
+
+---
+
 
 ---
 
@@ -41,17 +44,42 @@ This phase proves the core claim: **add a pipeline, get intelligent search out o
 
 ---
 
-## Phase 4 — No-Code Setup
-*Lower the floor for non-developers*
+## Phase 4 — CLI Scaffold
+*The thesis statement of the whole project*
 
-- [ ] **Setup wizard CLI** — interactive terminal wizard that asks: content type, fields to index, embedding model, threshold defaults. Outputs a ready-to-run `search-arena.yml` and `docker-compose.yml`.
-- [ ] **Node-RED integration (experimental)** — visual flow editor for wiring ingestion pipelines. A node for each step: extract → chunk → embed → publish. Makes the ingestion pipeline inspectable and modifiable without code.
+```bash
+npx create-search-arena my-project --pdf --library-frontend
+```
+
+A developer answers a few prompts — content type, embedding model, frontend or API-only — and gets a working, customised search stack. No reading docs, no editing configs by hand.
+
+- [ ] **`create-search-arena` CLI** — selects and composes existing, tested services based on flags. Generates `docker-compose.yml`, `search-arena.yml`, and a pre-filled README. Doesn't generate code — it assembles what already exists.
+- [ ] **Pipeline plugins** — each content type (`--pdf`, `--email-imap`, `--calendar-ical`) is a self-contained service in `services/pipelines/`. The CLI picks which ones to include.
+- [ ] **Frontend plugins** — `--frontend demo` (current full UI) or `--frontend library` (clean document search UI). API-only mode omits the frontend entirely.
 - [ ] **One-command cloud deploy** — a deploy script targeting Fly.io or Railway for teams that want a hosted instance without managing Docker infrastructure themselves.
+
+---
+
+## Optional — MCP Integration
+*AI client layer, not a framework requirement*
+
+MCP (Model Context Protocol) is the right way to connect this retrieval engine to an LLM — but it belongs after the framework is solid, not on the critical path to it. A developer embedding search into their own product doesn't need MCP. It becomes relevant when the consumer is an AI assistant rather than application code.
+
+```
+LLM Client  ──MCP──►  MCP Server (~100 lines)  ──HTTP──►  API Gateway  ──►  Qdrant + ES
+```
+
+- [ ] **MCP server** — exposes `search_documents(query, collection, mode)`, `list_collections()`, and `get_document(id)` as MCP tools. Added to `docker-compose.yml` as an opt-in service.
+- [ ] **RAG demo** — Claude queries the indexed corpus directly: *"summarize everything we have on GDPR compliance"* — retrieval handled by this project, synthesis handled by the LLM. No custom chat UI needed.
+
+**Why not earlier?** MCP is an integration story, not a framework feature. The framework value is in clean ingestion, config-driven setup, and the adapter pattern. MCP on top of a half-finished framework would just be a demo with extra steps.
 
 ---
 
 ## Positioning
 
-The closest analogues are [Haystack](https://haystack.deepset.ai/) and [Unstructured.io](https://unstructured.io/) — both excellent but library-first: you write code to assemble the pipeline. Search Arena takes the opposite approach: **run it first, see it work, then adapt it**. The demo is not separate from the framework — it is the framework, with real data loaded in.
+Search Arena is a **semantic search scaffold** — infrastructure you run and extend, not a library you import.
 
-The target user is a developer building a product that needs intelligent search — a document management system, a knowledge base, an internal tool — who wants a proven, observable foundation rather than assembling one from primitives.
+The closest analogues are [Haystack](https://haystack.deepset.ai/) and [Unstructured.io](https://unstructured.io/) — both excellent but code-first: you assemble the pipeline yourself. Search Arena takes the opposite approach: **run it first, see it work, then extend it by adding a service**. The demo is not separate from the scaffold — it is the scaffold, with real data loaded in.
+
+The target user is a developer who needs intelligent search over their own content — PDFs, emails, calendar entries, any corpus — and wants a proven, observable foundation to extend rather than build from scratch.

@@ -172,7 +172,10 @@ services:
     depends_on:
       - api-gateway
     volumes:
+      - ./services/frontend/src:/app/src
+      - ./services/frontend/public:/app/public
       - ./images:/app/public/images:ro
+      - /app/node_modules
     environment:
       - VITE_API_URL=http://localhost:8000
 

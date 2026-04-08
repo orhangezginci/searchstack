@@ -2,10 +2,11 @@ import asyncio
 import json
 import os
 import re
+import time
 import numpy as np
 import httpx
 import redis as redis_lib
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel
@@ -309,3 +310,127 @@ async def image_concepts(request: ConceptsRequest):
         }
 
     return {"concepts": concepts, "breakdown": breakdown}
+
+
+# ── Visual vocabulary for upload explanations ────────────────────────────────
+
+VISUAL_VOCAB = [
+    "beach", "ocean", "water", "mountain", "forest", "city", "night", "sunset",
+    "people", "animals", "food", "rain", "snow", "dramatic", "peaceful",
+    "indoor", "outdoor", "colorful", "dark", "bright", "architecture",
+    "nature", "sky", "portrait", "landscape", "warm", "cold", "minimal",
+]
+
+CACHE_KEY_VOCAB_VECTORS = "clip:vocab_vectors"
+
+
+async def get_vocab_vectors(client: httpx.AsyncClient) -> dict[str, list[float]]:
+    cached = cache.get(CACHE_KEY_VOCAB_VECTORS)
+    if cached:
+        return json.loads(cached)
+    vectors = {}
+    for concept in VISUAL_VOCAB:
+        resp = await client.post(f"{CLIP_EMBEDDING_SERVICE}/embed-text", json={"text": concept})
+        resp.raise_for_status()
+        vectors[concept] = resp.json()["vector"]
+    cache.set(CACHE_KEY_VOCAB_VECTORS, json.dumps(vectors))
+    print(f"[cache] cached {len(vectors)} vocab vectors", flush=True)
+    return vectors
+
+
+@app.post("/search/images/upload")
+async def search_images_upload(file: UploadFile = File(...), limit: int = 6):
+    contents = await file.read()
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        t_embed = time.time()
+        embed_response = await client.post(
+            f"{CLIP_EMBEDDING_SERVICE}/embed-image-upload",
+            files={"file": (file.filename, contents, file.content_type)},
+        )
+        if embed_response.status_code != 200:
+            raise HTTPException(status_code=502, detail="CLIP embedding service error")
+        embedding_ms = round((time.time() - t_embed) * 1000)
+        vector = embed_response.json()["vector"]
+
+        t_search = time.time()
+        top_response, full_response = await asyncio.gather(
+            client.post(
+                f"{VECTOR_SEARCH_SERVICE}/search",
+                json={"collection": "images", "vector": vector, "limit": limit + 2, "score_threshold": 0.0},
+            ),
+            client.post(
+                f"{VECTOR_SEARCH_SERVICE}/search",
+                json={"collection": "images", "vector": vector, "limit": 1000, "score_threshold": 0.0},
+            ),
+        )
+        search_ms = round((time.time() - t_search) * 1000)
+
+    if top_response.status_code != 200:
+        raise HTTPException(status_code=502, detail="Vector search service error")
+
+    cached = cache.get(CACHE_KEY_IMAGE_VECTORS)
+    total_indexed = len(json.loads(cached)) if cached else 0
+
+    all_scores = [r["score"] for r in full_response.json().get("results", [])]
+    candidates = [r for r in top_response.json().get("results", []) if r["score"] < 0.99][:limit]
+    top_score = candidates[0]["score"] if candidates else 1.0
+
+    results = []
+    for r in candidates:
+        score = r["score"]
+        scores_below = sum(1 for s in all_scores if s < score)
+        percentile = round((scores_below / len(all_scores)) * 100) if all_scores else 0
+        results.append({
+            "filename": r["payload"]["filename"],
+            "title": r["payload"]["title"],
+            "score": score,
+            "percentile": percentile,
+            "score_delta": round(score - top_score, 4),
+        })
+
+    return {
+        "query": f"[uploaded image: {file.filename}]",
+        "total_indexed": total_indexed,
+        "query_vector": vector,
+        "timings": {"embedding_ms": embedding_ms, "search_ms": search_ms},
+        "results": results,
+    }
+
+
+class UploadExplainRequest(BaseModel):
+    query_vector: list[float]
+    filenames: list[str]
+
+
+@app.post("/search/images/upload/explain")
+async def explain_upload_results(request: UploadExplainRequest):
+    t_explain = time.time()
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        vocab_vectors = await get_vocab_vectors(client)
+
+    all_vectors = json.loads(cache.get(CACHE_KEY_IMAGE_VECTORS) or "{}")
+
+    query_scores = {
+        concept: cosine_similarity(request.query_vector, vec)
+        for concept, vec in vocab_vectors.items()
+    }
+
+    explanations = {}
+    for filename in request.filenames:
+        if filename not in all_vectors:
+            continue
+        img_vec = all_vectors[filename]
+        result_scores = {
+            concept: cosine_similarity(img_vec, vec)
+            for concept, vec in vocab_vectors.items()
+        }
+        shared = sorted(
+            VISUAL_VOCAB,
+            key=lambda c: query_scores[c] + result_scores[c],
+            reverse=True,
+        )[:3]
+        explanations[filename] = f"Matched on: {', '.join(shared)}"
+
+    return {"explanations": explanations, "explain_ms": round((time.time() - t_explain) * 1000)}

@@ -1,5 +1,6 @@
+import io
 import os
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from pydantic import BaseModel
 from sentence_transformers import SentenceTransformer
 from PIL import Image
@@ -30,6 +31,14 @@ def health():
 @app.post("/embed-text")
 def embed_text(request: TextRequest):
     vector = model.encode(request.text).tolist()
+    return {"vector": vector, "dimension": len(vector)}
+
+
+@app.post("/embed-image-upload")
+async def embed_image_upload(file: UploadFile = File(...)):
+    contents = await file.read()
+    image = Image.open(io.BytesIO(contents)).convert("RGB")
+    vector = model.encode(image).tolist()
     return {"vector": vector, "dimension": len(vector)}
 
 

@@ -1,6 +1,19 @@
 # Search Arena
 
-**A live side-by-side comparison of semantic search vs keyword search — built to show exactly where each approach wins, loses, and why.**
+**Not a library. Not a framework. A git clone.**
+
+```bash
+git clone https://github.com/orhangezginci/search-arena.git
+cd search-arena
+# add your pipeline
+# docker compose up
+# done
+```
+
+Search Arena is a fully working semantic search stack you clone and extend by adding one service. The core — vector search, keyword search, hybrid ranking, embeddings, event bus — is already running. You bring the content: PDFs, emails, calendar entries, anything. Drop a new ingestion service into `docker-compose.yml` and the rest handles itself.
+
+> No `pip install search-arena`. No wrapping imports. No framework to learn.  
+> Clone it, run it, add your pipeline, search your content.
 
 ![Python](https://img.shields.io/badge/Python-3.11-3776ab?style=flat-square&logo=python&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178c6?style=flat-square&logo=typescript&logoColor=white)
@@ -16,13 +29,28 @@
 
 ## What This Project Demonstrates
 
-### 1. Semantic Search vs Keyword Search — side by side
-The UI runs both engines on every query simultaneously. The contrast speaks for itself: semantic search understands *meaning*, BM25 matches *tokens*.
+### 1. Semantic vs Keyword vs Hybrid Search — side by side
+Three engines run on every query simultaneously. Semantic search understands *meaning*, BM25 matches *tokens*, and hybrid (Reciprocal Rank Fusion) combines both — promoting results that appear in both lists and demoting results that only one engine sees.
 
-### 2. Multi-Modal Search with CLIP
+### 2. Hybrid Search with Reciprocal Rank Fusion
+The hybrid column isn't a simple average — it's a rank-fusion algorithm that correctly handles the case where neither engine alone gets the answer right.
+
+```
+score = 0.7 / (semantic_rank + K) + 0.3 / (keyword_rank + K)   K = 60
+```
+
+Only semantic candidates qualify. Keyword-only results are excluded. The benchmark query `street food quick and spicy` demonstrates this cleanly: semantic picks Vindaloo (spicy), keyword picks Chicken Noodle Soup (noodle), hybrid picks Pad Thai — the one result both engines independently agreed belongs in the conversation.
+
+### 3. Multi-Modal Search with CLIP
 A second mode lets you search **50 photos using natural language** — no filenames, no tags, no metadata. The images are stored under opaque names (`img_001.jpg` … `img_050.jpg`). CLIP embeds your text and the images into the same 512-dimensional vision-language space and matches by cosine similarity. Keyword search returns zero results — there is nothing to tokenise.
 
-### 3. The Adapter Pattern on Vector Databases
+### 4. Image Upload — find visually similar images
+Drop your own photo into the Upload tab. CLIP embeds it on the fly, searches the indexed collection, and returns visually similar results. Each result shows:
+- **Cosine similarity score** and **collection percentile** — "top 4% of 50"
+- **Concept chips** — vocabulary probes (28 visual concepts cached in Redis) explain which visual properties drove each match
+- **Animated ingestion pipeline** — shows every step from upload to result with real per-step timings on hover
+
+### 5. The Adapter Pattern on Vector Databases
 All vector DB operations go through an abstract `VectorDBAdapter` interface. Qdrant is the current implementation — swappable for ChromaDB, Weaviate, or Pinecone by changing a single config value, with zero changes to any other service.
 
 ```python
@@ -32,7 +60,7 @@ class VectorDBAdapter(ABC):
     def search(self, collection, vector, limit, score_threshold) -> list: ...
 ```
 
-### 4. Event-Driven Microservice Architecture
+### 6. Event-Driven Microservice Architecture
 Ingestion publishes to a **RabbitMQ fanout exchange**. Vector search and keyword search consume independently — fully decoupled. Adding a new index means adding a new consumer, not touching existing code.
 
 ```
@@ -47,36 +75,38 @@ POST /ingest
      └──► [keyword-search-service] →  Elasticsearch
 ```
 
-### 5. Redis Embedding Cache
-Concept vectors computed by CLIP are cached in Redis on first use. All 50 image vectors are pre-loaded into Redis at api-gateway startup. Repeated queries hit the cache — no redundant model inference, production-realistic latency.
+### 7. Redis Embedding Cache
+Concept vectors computed by CLIP are cached in Redis on first use. All 50 image vectors are pre-loaded into Redis at api-gateway startup. Repeated queries hit the cache — no redundant model inference.
 
-### 6. Per-Result Scientific Metrics
-Every image result shows:
-- **Cosine similarity** — the raw vector distance score
-- **Collection percentile** — "top 4% of 50" — where this result sits in the full score distribution
-- **Delta vs #1** — how far behind the best match
+### 8. 3D Embedding Space Visualisation
+Every recipe search renders a live **PCA-reduced 3D projection** of the embedding space using React Three Fiber. Points are heatmap-coloured by cosine similarity — cold blue for distant, pulsing neon for the closest match.
 
-The full-collection scan runs in parallel with the top-N search so there is no added latency.
-
-### 7. 3D Embedding Space Visualisation (Recipe Search only)
-Every recipe search renders a live **PCA-reduced 3D projection** of the 768-dimensional text embedding space using React Three Fiber. Data points are heatmap-coloured by cosine similarity — cold blue for distant, pulsing neon red for the closest match. Image search uses a fundamentally different modality (512d vision-language space) and presents results as a visual grid with per-result metrics instead.
-
-### 8. Where Small Language Models Hit Their Limit
-Searching `a romantic dinner for two` returns weak results. This is intentional — `all-mpnet-base-v2` excels at paraphrase similarity but can't bridge ingredient lists to social occasion semantics. The architecture is model-agnostic; swapping is a one-line change in the embedding service.
+### 9. Where Small Language Models Hit Their Limit
+Searching `a romantic dinner for two` returns weak results — intentionally. `all-mpnet-base-v2` excels at paraphrase similarity but can't bridge ingredient lists to social occasion semantics. The architecture is model-agnostic; swapping is a one-line change in the embedding service.
 
 ---
 
 ## The Demos
 
-### Recipe Search
-Type `I have a hangover` into the search bar.
+### Recipe Search — semantic wins
+Type `I have a hangover`.
 
-Semantic search returns **Bloody Mary** and **Pho Bo**. Keyword search returns **nothing** — because the word "hangover" doesn't appear anywhere in the dataset. That gap is the whole point.
+Semantic returns **Bloody Mary** and **Pho Bo**. Keyword returns nothing — "hangover" doesn't appear in any recipe. That gap is the whole point.
+
+### Recipe Search — hybrid wins
+Type `street food quick and spicy`.
+
+| Engine | #1 result | Why |
+|---|---|---|
+| Semantic | Chicken Vindaloo | fixates on "spicy" |
+| Keyword | Chicken Noodle Soup | token overlap, no understanding |
+| **Hybrid** | **Pad Thai** | ranked in both lists — fusion promotes consensus |
 
 ### Image Search
-Type `dramatic stormy ocean` into the image search bar.
+Type `dramatic stormy ocean`. CLIP finds the matching photos. Keyword returns zero — there are no words to match. The concept chips on each result show which visual properties drove the match.
 
-CLIP finds the matching photos from a collection of 50 opaque images. Keyword search returns zero — there are no words to match against. The concept chips on each result show which parts of your query drove the match.
+### Image Upload
+Drop any photo into the Upload tab. Watch the animated pipeline show CLIP embedding → Qdrant search → concept vocabulary explanation in real time, with millisecond timings on each step.
 
 ---
 
@@ -99,23 +129,23 @@ Docker Compose handles the full startup sequence automatically:
 
 Open **http://localhost:3000**
 
-> First boot takes several minutes — the embedding service downloads `all-mpnet-base-v2` (~420 MB) and the CLIP service downloads `clip-ViT-B-32` (~350 MB).
+> First boot takes several minutes — the embedding service downloads `all-mpnet-base-v2` (~420 MB) and the CLIP service downloads `clip-ViT-B-32` (~350 MB). Subsequent restarts are fast.
 
 ---
 
 ## Try These Queries
 
-### Recipe Search (text → text)
+### Recipe Search
 
-| Query | Semantic finds | Keyword finds |
-|---|---|---|
-| `I have a hangover` | Bloody Mary, Pho Bo | ✗ nothing |
-| `I have the flu` | Honey Ginger Tea, Chicken Noodle Soup | ✗ nothing |
-| `something cooling on a hot day` | Gazpacho, Watermelon Salad | ✗ nothing |
-| `fiery heat` | Vindaloo, Kimchi Jjigae, Mapo Tofu | ✗ nothing |
-| `a warming drink for cold evenings` | Mulled Wine, Hot Toddy, Chai | ✗ nothing |
+| Query | Semantic finds | Keyword finds | Hybrid advantage |
+|---|---|---|---|
+| `I have a hangover` | Bloody Mary, Pho Bo | ✗ nothing | — |
+| `I have the flu` | Honey Ginger Tea, Chicken Soup | ✗ nothing | — |
+| `street food quick and spicy` | Vindaloo | Chicken Noodle Soup | ✓ Pad Thai |
+| `szechuan` | noisy | ✓ exact match | keyword wins |
+| `something cooling on a hot day` | Gazpacho, Watermelon Salad | ✗ nothing | — |
 
-### Image Search (text → image)
+### Image Search
 
 | Query | CLIP finds | Keyword finds |
 |---|---|---|
@@ -131,8 +161,8 @@ Open **http://localhost:3000**
 ```mermaid
 flowchart TD
     Browser["Browser :3000\nReact · TypeScript · Three.js"]
-    Gateway["api-gateway :8000\nFastAPI"]
-    Redis["Redis :6379\nEmbedding cache"]
+    Gateway["api-gateway :8000\nFastAPI · Redis cache"]
+    Redis["Redis :6379\nCLIP vector cache"]
     Embed["embedding-service :8001\nall-mpnet-base-v2 · 768d"]
     Vector["vector-search-service :8002\nQdrant adapter · PCA"]
     Keyword["keyword-search-service :8003\nElasticsearch BM25"]
@@ -147,9 +177,9 @@ flowchart TD
     Browser -->|REST| Gateway
     Gateway <-->|cache| Redis
     Gateway -->|embed query| Embed
-    Gateway -->|embed image query| CLIP
-    Gateway -->|search| Vector
-    Gateway -->|search| Keyword
+    Gateway -->|embed image / upload| CLIP
+    Gateway -->|vector search| Vector
+    Gateway -->|keyword search| Keyword
     Ingest -->|embed-batch| Embed
     Ingest -->|publish| MQ
     MQ -->|consume| Vector
@@ -172,7 +202,7 @@ flowchart TD
 | keyword-search-service | 8003 | FastAPI, Elasticsearch 8.12 BM25 |
 | ingestion-service | 8004 | FastAPI, pika (RabbitMQ) |
 | clip-embedding-service | 8005 | FastAPI, sentence-transformers (`clip-ViT-B-32`, 512d) |
-| redis | 6379 | Redis 7 (embedding vector cache) |
+| redis | 6379 | Redis 7 (CLIP vector cache) |
 | qdrant | 6333 | Qdrant (persisted volume) |
 | elasticsearch | 9200 | Elasticsearch (persisted volume) |
 | rabbitmq | 5672 / 15672 | RabbitMQ with management UI |
@@ -193,6 +223,6 @@ flowchart TD
 
 ## Roadmap
 
-- [ ] **User photo upload** — drag-and-drop your own image into the search, CLIP embeds it on the fly and finds visually similar images from the collection
-- [ ] **Adapter swap demo** — live UI toggle between Qdrant and ChromaDB
-- [ ] **Ingestion UI** — drag-and-drop documents into the pipeline
+The path from demo to scaffold runs through three phases: a **PDF pipeline** (first real-world extension, proves the pattern), a **config-driven core** (removes hardcoded assumptions), and a **CLI wizard** (`create-search-arena --pdf --library-frontend`) that lets any developer scaffold a custom search system in one command. MCP integration is an optional layer on top for LLM-powered querying.
+
+See [ROADMAP.md](ROADMAP.md) for the full plan.
