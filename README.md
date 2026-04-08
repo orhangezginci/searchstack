@@ -2,7 +2,12 @@
 
 **Not a library. Not a framework. A git clone.**
 
-Search Arena is a ready-to-run search backend (semantic + keyword + hybrid) that you extend by adding one ingestion service for your data.
+Search Arena is a ready-to-run search backend (semantic + keyword + hybrid) that you extend by adding one ingestion service for your data. Designed for real-world search use cases, not demos.
+
+### TL;DR
+- Clone → run → you have semantic + keyword + hybrid search
+- Add one ingestion service for your data
+- Done
 
 ```bash
 git clone https://github.com/orhangezginci/search-arena.git
@@ -13,7 +18,14 @@ docker compose up -d --build
 
 > No library to install. No framework to learn. No glue code to write.
 
-Most semantic search setups require stitching together embeddings, vector databases, keyword search, and APIs yourself. Search Arena gives you that entire stack already wired — built as a real system with production-grade components. You only add your data pipeline.
+Most semantic search setups require stitching together embeddings, vector databases, keyword search, and APIs yourself. Search Arena gives you that entire stack already wired. You only add your data pipeline.
+
+No schema design. No search tuning. No ranking logic. It just works.
+
+### Who this is for
+- Developers building search into their product
+- Side projects that need real search without the setup
+- Teams prototyping search systems fast
 
 ### Hybrid search fixes what each method gets wrong
 
@@ -110,7 +122,7 @@ Already cloned? Start everything:
 docker compose up -d --build
 ```
 
-Open **http://localhost:3000** — you now have a fully working production-grade search system.
+Open **http://localhost:3000** — you now have a fully working search system.
 
 > First boot takes a few minutes — embedding models download automatically (~770 MB total). Subsequent restarts are instant.
 
