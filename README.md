@@ -2,7 +2,7 @@
 
 **Not a library. Not a framework. A git clone.**
 
-The fastest way to add production-grade search (semantic + keyword + hybrid) to your own content.
+Search Arena is a ready-to-run search backend (semantic + keyword + hybrid) that you extend by adding one ingestion service for your data.
 
 ```bash
 git clone https://github.com/orhangezginci/search-arena.git
@@ -15,7 +15,15 @@ docker compose up -d --build
 
 Most semantic search setups require stitching together embeddings, vector databases, keyword search, and APIs yourself. Search Arena gives you that entire stack already wired — built as a real system with production-grade components. You only add your data pipeline.
 
+### Hybrid search fixes what each method gets wrong
+
+Semantic misses precision. Keyword misses meaning. Hybrid combines both — and always picks the right answer.
+
 ![Recipe search — semantic vs keyword vs hybrid](docs/demo-recipe-search.gif)
+
+### Search images by meaning — no tags, no filenames
+
+Type natural language. CLIP matches by visual semantics, not metadata.
 
 ![Image search — CLIP natural language over 50 photos](docs/demo-image-search.gif)
 
@@ -65,13 +73,13 @@ That's it. Add any extra fields — they're stored and returned automatically.
 
 ## What you can build
 
-| What | How |
+| Outcome | What to add |
 |---|---|
-| PDF document search | add a PDF ingestion service |
-| Email search | connect an IMAP ingestion service |
-| Calendar search | parse iCal / Google Calendar exports |
-| Knowledge base search | ingest markdown, Notion exports, wikis |
-| Image search | already built in — CLIP text → image search |
+| Search across thousands of PDFs | one PDF ingestion service |
+| Search your emails like ChatGPT | connect an IMAP ingestion service |
+| Search your calendar and meetings | ingest iCal / Google Calendar exports |
+| Search your knowledge base | ingest markdown, Notion exports, wikis |
+| Search images by natural language | already built in — CLIP text → image |
 
 Every use case follows the same pattern: **one new service, one block in docker-compose.yml**.
 
