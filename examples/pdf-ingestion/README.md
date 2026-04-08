@@ -16,6 +16,15 @@ docker compose up -d --build
 
 Wait until everything is healthy (~3–5 minutes on first boot).
 
+Verify the stack is up:
+
+```bash
+curl http://localhost:8000/health
+# {"status":"ok","service":"api-gateway"}
+```
+
+Open **http://localhost:3000** — you should see the Search Arena UI with the recipe demo working.
+
 ---
 
 ## 2. Copy this example into the project
