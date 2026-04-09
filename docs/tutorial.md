@@ -103,8 +103,16 @@ import fitz  # PyMuPDF
 import httpx
 import pika
 from fastapi import FastAPI, File, Form, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="PDF Ingestion Service", version="1.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "rabbitmq")
 EMBEDDING_URL = os.getenv("EMBEDDING_URL", "http://embedding-service:8001")
