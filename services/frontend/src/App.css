@@ -665,6 +665,20 @@
 
 
 /* Footer */
+.version-badge {
+  display: inline-block;
+  margin-top: 10px;
+  background: #1a1a2e;
+  color: #7c3aed;
+  border: 1px solid #7c3aed;
+  border-radius: 20px;
+  padding: 3px 12px;
+  font-size: 0.78rem;
+  font-family: monospace;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+}
+
 .app-footer {
   text-align: center;
   margin-top: 64px;

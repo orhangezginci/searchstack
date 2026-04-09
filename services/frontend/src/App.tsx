@@ -608,6 +608,7 @@ export default function App() {
       <header className="header">
         <h1>Search Arena</h1>
         <p>Semantic vs Keyword — see the difference in real time</p>
+        <span className="version-badge">v{APP_VERSION}</span>
       </header>
 
       {/* Mode tabs */}

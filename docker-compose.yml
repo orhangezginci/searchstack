@@ -179,6 +179,15 @@ services:
     environment:
       - VITE_API_URL=http://localhost:8000
 
+  generic-frontend:
+    build: ./services/generic-frontend
+    ports:
+      - "3001:3001"
+    depends_on:
+      - api-gateway
+    environment:
+      - VITE_API_URL=http://localhost:8000
+
   seeder:
     image: curlimages/curl:latest
     depends_on:
