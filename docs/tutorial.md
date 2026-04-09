@@ -239,6 +239,12 @@ curl http://localhost:8006/health
 
 ## 7. Ingest your PDFs
 
+**Option A — browser UI (no curl needed)**
+
+Open **http://localhost:3001**. Select the `PDF Documents` collection, pick your PDF, click **Ingest**. Done.
+
+**Option B — curl**
+
 ```bash
 curl -X POST http://localhost:8006/ingest \
   -F "file=@your_document.pdf" \
@@ -257,17 +263,17 @@ curl -X POST http://localhost:8006/ingest \
 Watch the RabbitMQ dashboard — 11 messages fan out to both consumers automatically.  
 Check **http://localhost:6333/dashboard** — a `docs` collection appears. You didn't create it.
 
-Ingest more files the same way:
-
-```bash
-curl -X POST http://localhost:8006/ingest \
-  -F "file=@another.pdf" \
-  -F "collection=docs"
-```
+Ingest more files the same way with either option.
 
 ---
 
 ## 8. Search your documents
+
+**Option A — browser UI**
+
+Open **http://localhost:3001**, switch to the **Search** tab, select `PDF Documents`, and type your query. Results appear in three columns: Semantic, Hybrid, Keyword — side by side.
+
+**Option B — curl**
 
 ```bash
 curl -s -X POST http://localhost:8000/search \

@@ -155,6 +155,7 @@ Try these queries to see the three engines compared live:
 | New search collection | `collection` param on `/search` — nothing to configure |
 | Different embedding model | `services/embedding-service/main.py` — one line |
 | Different vector database | `services/vector-search-service/adapter.py` — swap implementation |
+| Generic ingest + search UI | already included at **http://localhost:3001** — add one entry to `COLLECTIONS` in `services/generic-frontend/src/App.tsx` |
 | Custom frontend | call `POST /search` with your collection name |
 
 ### The pattern
@@ -197,6 +198,7 @@ If you're curious how it works internally:
 ```mermaid
 flowchart TD
     Browser["Browser :3000\nReact · TypeScript · Three.js"]
+    GenericUI["generic-frontend :3001\nIngest + Search · any collection"]
     Gateway["api-gateway :8000\nFastAPI · Redis cache"]
     Redis["Redis :6379\nCLIP vector cache"]
     Embed["embedding-service :8001\nall-mpnet-base-v2 · 768d"]
@@ -209,6 +211,7 @@ flowchart TD
     ES["Elasticsearch :9200"]
 
     Browser -->|REST| Gateway
+    GenericUI -->|REST| Gateway
     Gateway <-->|cache| Redis
     Gateway -->|embed query| Embed
     Gateway -->|embed image| CLIP
@@ -226,6 +229,7 @@ flowchart TD
 | Service | Port | Role |
 |---|---|---|
 | frontend | 3000 | Live search UI with 3D embedding space |
+| generic-frontend | 3001 | Generic ingest + search UI for any collection |
 | api-gateway | 8000 | Unified search API, hybrid ranking |
 | embedding-service | 8001 | Text → 768d vectors (all-mpnet-base-v2) |
 | vector-search-service | 8002 | Qdrant adapter, PCA projection |
@@ -242,6 +246,7 @@ flowchart TD
 | | URL |
 |---|---|
 | App | http://localhost:3000 |
+| Generic UI | http://localhost:3001 |
 | RabbitMQ | http://localhost:15672 (guest / guest) |
 | Qdrant | http://localhost:6333/dashboard |
 | Elasticsearch | http://localhost:9200 |
