@@ -129,6 +129,15 @@ export default function App() {
     setSeedStatus({ state: 'running', items: [], error: null })
     try {
       const res = await fetch(`${INGEST_URL}/seed-demo`, { method: 'POST' })
+      if (res.status === 404) {
+        setSeedStatus(null)
+        setSeedError(
+          'Your ingestion service does not have a /seed-demo endpoint.\n' +
+          'The tutorial builds a minimal service — demo seeding is part of the\n' +
+          'complete implementation in examples/pdf-ingestion/main.py.',
+        )
+        return
+      }
       if (!res.ok) {
         const text = await res.text()
         setSeedStatus(null)
