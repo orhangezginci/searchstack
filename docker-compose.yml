@@ -192,6 +192,22 @@ services:
       - VITE_API_URL=http://localhost:8000
       - VITE_PDF_INGEST_URL=http://localhost:8006
 
+  pdf-ingestion-service:
+    build: ./services/pdf-ingestion-service
+    ports:
+      - "8006:8006"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      - PYTHONUNBUFFERED=1
+      - RABBITMQ_HOST=rabbitmq
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8006/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   seeder:
     image: curlimages/curl:latest
     depends_on:

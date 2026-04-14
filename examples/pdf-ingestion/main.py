@@ -30,7 +30,7 @@ PDFS_DIR = Path(os.getenv("PDFS_DIR", "/pdfs"))
 PDFS_DIR.mkdir(parents=True, exist_ok=True)
 
 
-# ── Core helpers ───────────────────────────────────────────────────────────────
+# ── Shared helpers ─────────────────────────────────────────────────────────────
 
 def get_embeddings(texts: list[str]) -> list[list[float]]:
     response = httpx.post(
@@ -96,7 +96,10 @@ def process_pdf(contents: bytes, filename: str, collection: str) -> dict:
     return {"pages": len(doc), "chunks_published": len(chunks)}
 
 
-# ── Standard endpoints ─────────────────────────────────────────────────────────
+# ════════════════════════════════════════════════════════════════════════════════
+#  CORE SERVICE  —  required
+#  These are the endpoints a real ingestion service needs.
+# ════════════════════════════════════════════════════════════════════════════════
 
 @app.get("/health")
 def health():
@@ -143,7 +146,12 @@ async def ingest_pdf(
     }
 
 
-# ── Seed-demo ──────────────────────────────────────────────────────────────────
+# ════════════════════════════════════════════════════════════════════════════════
+#  DEMO EXTENSION  —  optional, not required for a real service
+#  Powers the "Load demo data" button in the frontend.
+#  Downloads five open-access research papers and ingests them automatically.
+#  Delete this section when you extend this service for production use.
+# ════════════════════════════════════════════════════════════════════════════════
 
 # Documents to seed — direct PDF downloads, no conversion needed.
 # All go into the 'docs' collection so the default search finds them.

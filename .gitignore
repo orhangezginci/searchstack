@@ -14,6 +14,9 @@ dist/
 qdrant_storage/
 elasticsearch_data/
 
+# Built during the tutorial — not committed to the repo
+services/pdf-ingestion-service/
+
 # Images (downloaded at runtime)
 images/
 
