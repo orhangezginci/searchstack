@@ -1,6 +1,7 @@
-# Tutorial: Build a PDF Search System
+# Tutorial: Build a PDF Ingestion Service
 
-**What you will build:** semantic, keyword, and hybrid search over your own PDF library.  
+**What you will build:** a PDF ingestion service that feeds your documents into Search Arena.  
+**What is already done:** the PDF search frontend at **http://localhost:3001** — drag-and-drop upload, a document library, a search bar, and a built-in PDF viewer that jumps to the matched page — is already running and waiting for your service.  
 **What you will touch:** one new directory, one block in `docker-compose.yml`. Nothing else.  
 **Prerequisites:** Docker, Docker Compose, `curl`, any PDF file.
 
@@ -14,13 +15,20 @@ cd search-arena
 docker compose up -d --build
 ```
 
-Open **http://localhost:3000**. The stack is running with a demo recipe dataset.
+The full stack is now running. Two URLs are relevant to this tutorial:
+
+| URL | What it is |
+|---|---|
+| **http://localhost:3000** | Demo search UI (recipe dataset — shows the engines in action) |
+| **http://localhost:3001** | PDF search UI — document library, inline viewer, search with semantic/keyword badges |
+
+Open **http://localhost:3001** now. You will see an empty document library with a search bar and two buttons: **+ Add PDFs** and **Load demo data**. The UI is fully wired to the core — the only missing piece is a service that accepts your PDFs and feeds the content through the pipeline. That is what you will build.
 
 ---
 
 ## 2. See what you are working with
 
-Try two queries in the search bar:
+Switch to **http://localhost:3000** briefly and try two queries in the demo search bar:
 
 **`I have a hangover`**  
 Semantic finds Bloody Mary and Pho Bo. Keyword finds nothing — the word "hangover" doesn't appear in any recipe. That's the gap semantic search fills.
@@ -28,7 +36,7 @@ Semantic finds Bloody Mary and Pho Bo. Keyword finds nothing — the word "hango
 **`szechuan`**  
 Keyword wins. Exact token match — surgical and fast. Semantic adds noise.
 
-You just saw the core claim: semantic and keyword search have different strengths. Hybrid combines both. Your PDFs are about to get the same treatment.
+Your PDFs will get the same treatment once your ingestion service is running. The search logic is already wired — the frontend at port 3001 will behave exactly like this demo, just over your documents.
 
 ---
 
@@ -75,7 +83,9 @@ Use `uuid.uuid5` for stable, reproducible IDs (Qdrant requires UUIDs). Any field
 
 ---
 
-## 5. Add your PDF ingestion service
+## 5. Build the PDF ingestion service
+
+This is the only thing you are building. Three files, one directory.
 
 ```bash
 mkdir services/pdf-ingestion-service
@@ -247,9 +257,11 @@ curl http://localhost:8006/health
 
 ## 7. Ingest your PDFs
 
+Your ingestion service is running. The frontend at port 3001 was already waiting for it — open it now and it's fully operational.
+
 **Option A — browser UI (no curl needed)**
 
-Open **http://localhost:3001**. Select the `PDF Documents` collection, pick your PDF, click **Ingest**. Done.
+Open **http://localhost:3001**. Drop a PDF anywhere on the page or click **+ Add PDFs** in the header. The file uploads, gets indexed, and appears as a card in your document library. You can ingest multiple PDFs the same way — each one becomes searchable immediately.
 
 **Option B — curl**
 
@@ -275,11 +287,38 @@ Ingest more files the same way with either option.
 
 ---
 
+## Optional: Load demo data to see the search in action
+
+> **This step is not required.** Your service works — you can ingest any PDF you already have. This section seeds a handful of open-access documents automatically so you can try the search immediately, without hunting for test files.
+
+Open **http://localhost:3001** and click **Load demo data**. The button downloads and indexes five open-access documents (two ML papers from arXiv, three medical reviews from PubMed Central) directly through your ingestion service. Progress is shown per document.
+
+If the ingestion service is not reachable the UI will tell you clearly — there is nothing else to configure.
+
+**Why these particular documents?** They make the difference between semantic and keyword search immediately obvious:
+
+| Query | What keyword finds | What semantic finds |
+|---|---|---|
+| `heart failure emergency` | nothing | myocardial infarction paper |
+| `memory loss in old people` | nothing | Alzheimer neurodegeneration review |
+| `blood sugar control` | nothing | type 2 diabetes management paper |
+| `self-attention mechanism` | the Transformer paper | the Transformer paper |
+| `attention mechanism` | both ML papers | both ML papers |
+
+Semantic wins on the paraphrased queries. Keyword wins (or ties) on exact terminology. Both answers are correct — they just answer different user intents.
+
+---
+
 ## 8. Search your documents
 
 **Option A — browser UI**
 
-Open **http://localhost:3001**, switch to the **Search** tab, select `PDF Documents`, and type your query. Results appear in three columns: Semantic, Hybrid, Keyword — side by side.
+Type a query into the search bar and press Enter. Results appear as a ranked list — each card shows:
+- the matched passage with the relevant text highlighted
+- which page it came from
+- badge labels (`semantic`, `keyword`, or both) indicating which engines found it
+
+Click any result to open the PDF at the exact matched page in a side panel. From there you can also click **↗** to open the full PDF externally; the matched phrase is copied to your clipboard automatically so you can Ctrl+F straight to the passage.
 
 **Option B — curl**
 
@@ -290,7 +329,7 @@ curl -s -X POST http://localhost:8000/search \
   | python3 -m json.tool
 ```
 
-Each result includes `title` (filename + page number) so you always know where the match came from. Try the same question with the `semantic`, `keyword`, and `hybrid` fields in the response — notice when each one gets it right and when it doesn't.
+The response has three separate lists — `semantic`, `keyword`, and `hybrid` — so you can compare them directly. Each result includes `title` (filename + page number). Notice which engine gets it right when you paraphrase vs. use exact terms.
 
 ---
 

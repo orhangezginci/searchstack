@@ -65,7 +65,7 @@ class SearchRequest(BaseModel):
     query: str
     collection: str = "recipes"
     limit: int = 5
-    score_threshold: float = 0.20
+    score_threshold: float = 0.05
 
 
 class PositionsRequest(BaseModel):
@@ -85,6 +85,68 @@ def serve_image(filename: str):
     if not os.path.exists(path):
         raise HTTPException(status_code=404, detail="Image not found")
     return FileResponse(path)
+
+
+_SNIPPET_STOPWORDS = {"a", "an", "the", "at", "in", "on", "of", "for", "to", "is",
+                      "are", "and", "or", "but", "with", "by", "from", "i", "my",
+                      "me", "some", "what", "how", "do", "does", "did", "was", "were",
+                      "have", "has", "had", "can", "could", "will", "would", "it", "its",
+                      "this", "that", "these", "those", "be", "been", "being", "als",
+                      "die", "der", "des", "dem", "den", "das", "ein", "eine", "eines",
+                      "und", "oder", "mit", "von", "zu", "im", "am", "auf"}
+
+
+def extract_snippet(text: str, query: str, max_len: int = 350) -> str:
+    """Return the most query-relevant passage from text with matched terms in <mark> tags."""
+    # Use all significant terms (≥4 chars, not stopwords) for passage scoring …
+    score_terms = [t for t in re.findall(r'\w+', query.lower())
+                   if len(t) >= 4 and t not in _SNIPPET_STOPWORDS]
+
+    # … but only highlight the 3 most distinctive (longest) terms to avoid
+    # visual noise that makes semantic results look like keyword matches.
+    highlight_terms = sorted(score_terms, key=len, reverse=True)[:3]
+
+    # Split text into candidate lines (newlines + bullet chars)
+    raw_lines = re.split(r'[\n•]', text)
+    lines = [l.strip() for l in raw_lines if l.strip()]
+
+    if not lines:
+        return text[:max_len] + ('…' if len(text) > max_len else '')
+
+    # Score each line by how many distinct query terms it contains
+    def line_score(line: str) -> int:
+        lower = line.lower()
+        return sum(1 for t in score_terms if t in lower)
+
+    scored = sorted(range(len(lines)), key=lambda i: line_score(lines[i]), reverse=True)
+    best = scored[0]
+
+    # Take best line + one neighbour on each side for context
+    start = max(0, best - 1)
+    end = min(len(lines), best + 2)
+    snippet = ' … '.join(lines[start:end])
+
+    if len(snippet) > max_len:
+        snippet = snippet[:max_len].rsplit(' ', 1)[0] + '…'
+
+    # Wrap only the top highlight terms in <mark> (longest first to avoid nesting)
+    for term in highlight_terms:
+        snippet = re.sub(
+            rf'(?<!\w)({re.escape(term)})(?!\w)',
+            r'<mark>\1</mark>',
+            snippet,
+            flags=re.IGNORECASE,
+        )
+
+    return snippet
+
+
+def add_snippets(results: list[dict], query: str) -> list[dict]:
+    for r in results:
+        text = r.get('payload', {}).get('text', '')
+        if text:
+            r['snippet'] = extract_snippet(text, query)
+    return results
 
 
 @app.post("/search")
@@ -133,6 +195,10 @@ async def search(request: SearchRequest):
         {"id": key, "score": round(score, 6), "payload": payloads[key]}
         for key, score in sorted(fused.items(), key=lambda x: x[1], reverse=True)[:request.limit]
     ]
+
+    add_snippets(semantic_results, request.query)
+    add_snippets(keyword_results, request.query)
+    add_snippets(hybrid_results, request.query)
 
     return {
         "query": request.query,

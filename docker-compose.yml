@@ -179,14 +179,37 @@ services:
     environment:
       - VITE_API_URL=http://localhost:8000
 
-  generic-frontend:
-    build: ./services/generic-frontend
+  pdf-frontend:
+    build: ./services/pdf-frontend
     ports:
       - "3001:3001"
     depends_on:
       - api-gateway
+    volumes:
+      - ./services/pdf-frontend/src:/app/src
+      - /app/node_modules
     environment:
       - VITE_API_URL=http://localhost:8000
+      - VITE_PDF_INGEST_URL=http://localhost:8006
+
+  pdf-ingestion-service:
+    build: ./services/pdf-ingestion-service
+    ports:
+      - "8006:8006"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    volumes:
+      - pdfs:/pdfs
+    environment:
+      - PYTHONUNBUFFERED=1
+      - RABBITMQ_HOST=rabbitmq
+      - PDFS_DIR=/pdfs
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8006/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   seeder:
     image: curlimages/curl:latest
@@ -218,3 +241,4 @@ services:
 volumes:
   qdrant_data:
   elasticsearch_data:
+  pdfs:

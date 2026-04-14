@@ -1,5 +1,5 @@
 {
-  "name": "generic-frontend",
+  "name": "pdf-frontend",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -10,7 +10,8 @@
   },
   "dependencies": {
     "react": "^19.2.4",
-    "react-dom": "^19.2.4"
+    "react-dom": "^19.2.4",
+    "react-pdf": "^9.2.1"
   },
   "devDependencies": {
     "@types/react": "^19.2.14",
