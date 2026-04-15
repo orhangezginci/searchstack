@@ -380,6 +380,8 @@ export default function App() {
                   ingesting={ingesting}
                   onAdd={() => inputRef.current?.click()}
                   onOpen={doc => setViewer({ doc, pageNumber: 1, result: { id: '', score: 0, payload: {} }, query: '' })}
+                  onSeed={startSeedDemo}
+                  seeding={seedStatus?.state === 'running'}
                 />
                 {(seedStatus || seedError) && (
                   <SeedPanel
@@ -582,17 +584,24 @@ function DocLibrary({
   ingesting,
   onAdd,
   onOpen,
+  onSeed,
+  seeding,
 }: {
   docs: Doc[]
   ingesting: string[]
   onAdd: () => void
   onOpen: (doc: Doc) => void
+  onSeed: () => void
+  seeding: boolean
 }) {
   return (
     <div>
       <div style={s.libraryHeader}>
         <span style={s.libraryCount}>{docs.length} document{docs.length !== 1 ? 's' : ''}</span>
         <button style={s.libraryAddBtn} onClick={onAdd}>+ Add more</button>
+        <button style={s.seedBtn} onClick={onSeed} disabled={seeding}>
+          {seeding ? 'Loading demo data…' : 'Load demo data'}
+        </button>
       </div>
       <div style={s.docGrid}>
         {docs.map(doc => {
