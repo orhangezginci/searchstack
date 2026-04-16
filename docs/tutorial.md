@@ -282,24 +282,21 @@ DEMO_DOCS = [
         ],
     },
     {
-        "id": "myocardial-infarction-review",
-        "label": "Myocardial Infarction — Pathophysiology Review (PMC)",
-        "pmc_query": "myocardial infarction pathophysiology treatment review",
+        "id": "medpalm-clinical-nlp",
+        "label": "Large Language Models Encode Clinical Knowledge (Singhal et al., 2022)",
+        "pdf_urls": ["https://arxiv.org/pdf/2212.13138"],
     },
     {
-        "id": "type2-diabetes-review",
-        "label": "Type 2 Diabetes Mellitus — Management Review (PMC)",
-        "pmc_query": "type 2 diabetes mellitus management insulin review",
+        "id": "biogpt-biomedical",
+        "label": "BioGPT: Generative Pre-trained Transformer for Biomedical Text (Luo et al., 2022)",
+        "pdf_urls": ["https://arxiv.org/pdf/2210.10341"],
     },
     {
-        "id": "alzheimer-review",
-        "label": "Alzheimer Disease — Neurodegeneration Review (PMC)",
-        "pmc_query": "alzheimer disease neurodegeneration cognitive decline review",
+        "id": "clinical-bert",
+        "label": "ClinicalBERT: Modeling Clinical Notes for Hospital Readmission (Huang et al., 2019)",
+        "pdf_urls": ["https://arxiv.org/pdf/1904.05342"],
     },
 ]
-
-ESEARCH_URL  = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
-EPMC_PDF_URL = "https://europepmc.org/backend/ptpmcrender.fcgi?accid=PMC{id}&blobtype=pdf"
 
 _seed_lock: threading.Lock = threading.Lock()
 _seed_state: dict = {"state": "idle", "items": [], "error": None}
@@ -317,42 +314,6 @@ def _download_pdf(urls: list[str]) -> bytes | None:
     return None
 
 
-def _find_pmc_pdf(query: str) -> tuple[bytes, str] | tuple[None, None]:
-    """Search PMC for query, return (pdf_bytes, filename) for the first hit with a PDF."""
-    try:
-        r = httpx.get(
-            ESEARCH_URL,
-            params={
-                "db": "pmc",
-                "term": f"{query}[Title/Abstract] AND open access[filter]",
-                "retmax": 10,
-                "retmode": "json",
-                "sort": "relevance",
-            },
-            timeout=20,
-        )
-        r.raise_for_status()
-        ids = r.json()["esearchresult"]["idlist"]
-    except Exception:
-        return None, None
-
-    for pmcid in ids[:5]:
-        try:
-            resp = httpx.get(
-                EPMC_PDF_URL.format(id=pmcid),
-                timeout=60,
-                follow_redirects=True,
-            )
-            ct = resp.headers.get("content-type", "")
-            if resp.status_code == 200 and "pdf" in ct and resp.content[:4] == b"%PDF":
-                return resp.content, f"PMC{pmcid}.pdf"
-        except Exception:
-            pass
-        time.sleep(0.5)
-
-    return None, None
-
-
 def _run_seed_demo():
     """Background task — download and ingest all demo documents."""
     items = [{"id": d["id"], "label": d["label"], "state": "pending"} for d in DEMO_DOCS]
@@ -367,17 +328,8 @@ def _run_seed_demo():
             _seed_state["items"][i]["state"] = "downloading"
 
         try:
-            pdf_bytes: bytes | None = None
-            filename: str | None = None
-
-            if "pdf_urls" in demo:
-                pdf_bytes = _download_pdf(demo["pdf_urls"])
-                if pdf_bytes:
-                    filename = f"{demo['id']}.pdf"
-            elif "pmc_query" in demo:
-                pdf_bytes, filename = _find_pmc_pdf(demo["pmc_query"])
-                if not filename:
-                    filename = f"{demo['id']}.pdf"
+            pdf_bytes = _download_pdf(demo["pdf_urls"])
+            filename = f"{demo['id']}.pdf" if pdf_bytes else None
 
             if not pdf_bytes:
                 with _seed_lock:
@@ -509,7 +461,7 @@ Ingest more files the same way with either option.
 
 > **This step is not required.** Your service works — you can ingest any PDF you already have. This section seeds a handful of open-access documents automatically so you can try the search immediately, without hunting for test files.
 
-Open **http://localhost:3001** and click **Load demo data**. The button downloads and indexes five open-access documents (two ML papers from arXiv, three medical reviews from PubMed Central) directly through your ingestion service. Progress is shown per document.
+Open **http://localhost:3001** and click **Load demo data**. The button downloads and indexes five open-access papers from arXiv — two foundational NLP papers and three biomedical AI papers — directly through your ingestion service. Progress is shown per document.
 
 If the ingestion service is not reachable the UI will tell you clearly — there is nothing else to configure.
 
@@ -517,9 +469,9 @@ If the ingestion service is not reachable the UI will tell you clearly — there
 
 | Query | What keyword finds | What semantic finds |
 |---|---|---|
-| `heart failure emergency` | nothing | myocardial infarction paper |
-| `memory loss in old people` | nothing | Alzheimer neurodegeneration review |
-| `blood sugar control` | nothing | type 2 diabetes management paper |
+| `doctors answering medical questions` | nothing | MedPaLM clinical knowledge paper |
+| `reading hospital records` | nothing | ClinicalBERT paper |
+| `biomedical text generation` | BioGPT paper | BioGPT paper |
 | `self-attention mechanism` | the Transformer paper | the Transformer paper |
 | `attention mechanism` | both ML papers | both ML papers |
 

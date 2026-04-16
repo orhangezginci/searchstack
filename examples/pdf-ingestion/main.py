@@ -2,7 +2,6 @@ import copy
 import json
 import os
 import threading
-import time
 import uuid
 from pathlib import Path
 
@@ -149,102 +148,32 @@ async def ingest_pdf(
 # ════════════════════════════════════════════════════════════════════════════════
 #  DEMO EXTENSION  —  optional, not required for a real service
 #  Powers the "Load demo data" button in the frontend.
-#  Downloads five open-access research papers and ingests them automatically.
+#  Ingests five PDF documents that are pre-generated at build time
+#  by generate_demo_pdfs.py and bundled inside the Docker image.
 #  Delete this section when you extend this service for production use.
 # ════════════════════════════════════════════════════════════════════════════════
 
-# Documents to seed — direct PDF downloads, no conversion needed.
-# All go into the 'docs' collection so the default search finds them.
-DEMO_DOCS = [
-    {
-        "id": "attention-is-all-you-need",
-        "label": "Attention Is All You Need (Vaswani et al., 2017)",
-        "pdf_urls": [
-            "https://arxiv.org/pdf/1706.03762v5",
-            "https://arxiv.org/pdf/1706.03762",
-        ],
-    },
-    {
-        "id": "bert-language-model",
-        "label": "BERT: Pre-training of Deep Bidirectional Transformers (Devlin et al., 2018)",
-        "pdf_urls": [
-            "https://arxiv.org/pdf/1810.04805",
-        ],
-    },
-    {
-        "id": "myocardial-infarction-review",
-        "label": "Myocardial Infarction — Pathophysiology Review (PMC)",
-        "pmc_query": "myocardial infarction pathophysiology treatment review",
-    },
-    {
-        "id": "type2-diabetes-review",
-        "label": "Type 2 Diabetes Mellitus — Management Review (PMC)",
-        "pmc_query": "type 2 diabetes mellitus management insulin review",
-    },
-    {
-        "id": "alzheimer-review",
-        "label": "Alzheimer Disease — Neurodegeneration Review (PMC)",
-        "pmc_query": "alzheimer disease neurodegeneration cognitive decline review",
-    },
-]
+DEMO_PDFS_DIR = Path("/demo-pdfs")
 
-ESEARCH_URL  = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
-EPMC_PDF_URL = "https://europepmc.org/backend/ptpmcrender.fcgi?accid=PMC{id}&blobtype=pdf"
+DEMO_DOCS = [
+    {"id": "attention-is-all-you-need",
+     "label": "Attention Mechanisms and Transformer Networks"},
+    {"id": "first-black-hole-image",
+     "label": "Black Holes and the Limits of Spacetime"},
+    {"id": "dqn-atari-games",
+     "label": "Learning Through Reward: Reinforcement Learning and Game Playing"},
+    {"id": "covid19-epidemiology",
+     "label": "How Infectious Diseases Spread: Epidemiology and Transmission Dynamics"},
+    {"id": "climate-tipping-points",
+     "label": "Climate Tipping Points and Feedback Loops"},
+]
 
 _seed_lock: threading.Lock = threading.Lock()
 _seed_state: dict = {"state": "idle", "items": [], "error": None}
 
 
-def _download_pdf(urls: list[str]) -> bytes | None:
-    for url in urls:
-        try:
-            r = httpx.get(url, timeout=60, follow_redirects=True,
-                          headers={"User-Agent": "Mozilla/5.0"})
-            if r.status_code == 200 and r.content[:4] == b"%PDF":
-                return r.content
-        except Exception:
-            pass
-    return None
-
-
-def _find_pmc_pdf(query: str) -> tuple[bytes, str] | tuple[None, None]:
-    """Search PMC for query, return (pdf_bytes, filename) for the first hit with a PDF."""
-    try:
-        r = httpx.get(
-            ESEARCH_URL,
-            params={
-                "db": "pmc",
-                "term": f"{query}[Title/Abstract] AND open access[filter]",
-                "retmax": 10,
-                "retmode": "json",
-                "sort": "relevance",
-            },
-            timeout=20,
-        )
-        r.raise_for_status()
-        ids = r.json()["esearchresult"]["idlist"]
-    except Exception:
-        return None, None
-
-    for pmcid in ids[:5]:
-        try:
-            resp = httpx.get(
-                EPMC_PDF_URL.format(id=pmcid),
-                timeout=60,
-                follow_redirects=True,
-            )
-            ct = resp.headers.get("content-type", "")
-            if resp.status_code == 200 and "pdf" in ct and resp.content[:4] == b"%PDF":
-                return resp.content, f"PMC{pmcid}.pdf"
-        except Exception:
-            pass
-        time.sleep(0.5)
-
-    return None, None
-
-
 def _run_seed_demo():
-    """Background task — download and ingest all demo documents."""
+    """Background task — ingest pre-generated demo PDFs from /demo-pdfs."""
     items = [{"id": d["id"], "label": d["label"], "state": "pending"} for d in DEMO_DOCS]
 
     with _seed_lock:
@@ -253,30 +182,12 @@ def _run_seed_demo():
     all_failed = True
 
     for i, demo in enumerate(DEMO_DOCS):
+        filename = f"{demo['id']}.pdf"
         with _seed_lock:
-            _seed_state["items"][i]["state"] = "downloading"
+            _seed_state["items"][i]["state"] = "ingesting"
 
         try:
-            pdf_bytes: bytes | None = None
-            filename: str | None = None
-
-            if "pdf_urls" in demo:
-                pdf_bytes = _download_pdf(demo["pdf_urls"])
-                if pdf_bytes:
-                    filename = f"{demo['id']}.pdf"
-            elif "pmc_query" in demo:
-                pdf_bytes, filename = _find_pmc_pdf(demo["pmc_query"])
-                if not filename:
-                    filename = f"{demo['id']}.pdf"
-
-            if not pdf_bytes:
-                with _seed_lock:
-                    _seed_state["items"][i].update({"state": "error", "error": "Could not download PDF"})
-                continue
-
-            with _seed_lock:
-                _seed_state["items"][i]["state"] = "ingesting"
-
+            pdf_bytes = (DEMO_PDFS_DIR / filename).read_bytes()
             result = process_pdf(pdf_bytes, filename, "docs")
 
             with _seed_lock:

@@ -13,13 +13,14 @@ const INGEST_URL = import.meta.env.VITE_PDF_INGEST_URL || 'http://localhost:8006
 const COLLECTION = 'docs'
 
 const SPECTACULAR_QUERIES = [
-  'heart failure emergency and blocked coronary arteries',
-  'memory loss and confusion in older patients',
-  'blood sugar control when the body resists insulin',
-  'machines that learn to understand human language',
-  'pre-training a model on large text corpora',
-  'progressive loss of nerve cells in the brain',
-  'risk factors for developing metabolic disease',
+  'photographing something in space that traps light forever',
+  'teaching a computer to play games by trial and error',
+  'how a virus spreads silently before anyone notices',
+  'when climate change becomes impossible to reverse',
+  'how machines learn to understand human language',
+  'event horizon telescope',
+  'Q-learning reward',
+  'self-attention mechanism',
 ]
 
 // ── Palette ───────────────────────────────────────────────────────────────────
@@ -38,6 +39,14 @@ function docInitials(filename: string): string {
   return words.length >= 2
     ? (words[0][0] + words[1][0]).toUpperCase()
     : base.slice(0, 2).toUpperCase()
+}
+
+function docDisplayName(filename: string): string {
+  return filename
+    .replace(/\.pdf$/i, '')
+    .split(/[-_]+/)
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ')
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -162,7 +171,23 @@ export default function App() {
         setSeedStatus(data)
         if (data.state === 'done' || data.state === 'error') {
           clearInterval(id)
-          void refreshDocs()
+          const seededDocs: Doc[] = data.items
+            .filter(item => item.state === 'done' && item.filename)
+            .map(item => ({
+              filename: item.filename!,
+              fileUrl:  `${INGEST_URL}/pdfs/${encodeURIComponent(item.filename!)}`,
+              pages:    item.pages  ?? 0,
+              chunks:   item.chunks ?? 0,
+              addedAt:  Date.now(),
+            }))
+          if (seededDocs.length > 0) {
+            setDocs(prev => {
+              const seededNames = new Set(seededDocs.map(d => d.filename))
+              return [...prev.filter(d => !seededNames.has(d.filename)), ...seededDocs]
+            })
+          } else {
+            void refreshDocs()
+          }
         }
       } catch {
         // transient; keep polling
@@ -548,7 +573,7 @@ function SeedPanel({ status, error, onDismiss }: {
                   )}
                   {item.state === 'done' && (
                     <div style={{ ...s.seedItemSub, color: '#22c55e' }}>
-                      {item.pages}p · {item.chunks} chunks indexed
+                      {item.pages} pages indexed
                     </div>
                   )}
                   {item.state === 'error' && (
@@ -598,10 +623,12 @@ function DocLibrary({
     <div>
       <div style={s.libraryHeader}>
         <span style={s.libraryCount}>{docs.length} document{docs.length !== 1 ? 's' : ''}</span>
-        <button style={s.libraryAddBtn} onClick={onAdd}>+ Add more</button>
-        <button style={s.seedBtn} onClick={onSeed} disabled={seeding}>
-          {seeding ? 'Loading demo data…' : 'Load demo data'}
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button style={s.libraryAddBtn} onClick={onAdd}>+ Add more</button>
+          <button style={s.seedBtn} onClick={onSeed} disabled={seeding}>
+            {seeding ? 'Loading demo data…' : 'Load demo data'}
+          </button>
+        </div>
       </div>
       <div style={s.docGrid}>
         {docs.map(doc => {
@@ -611,8 +638,8 @@ function DocLibrary({
               <div style={{ ...s.docCardIcon, background: color + '22', border: `1px solid ${color}44` }}>
                 <span style={{ ...s.docCardInitials, color }}>{docInitials(doc.filename)}</span>
               </div>
-              <div style={s.docCardName}>{doc.filename.replace(/\.pdf$/i, '')}</div>
-              <div style={s.docCardMeta}>{doc.pages}p · {doc.chunks} chunks</div>
+              <div style={s.docCardName}>{docDisplayName(doc.filename)}</div>
+              <div style={s.docCardMeta}>{doc.pages} pages</div>
             </button>
           )
         })}
@@ -847,7 +874,7 @@ const s: Record<string, React.CSSProperties> = {
   addBtn: { padding: '8px 18px', borderRadius: 8, background: '#7c3aed', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600 },
 
   // Search
-  searchWrap: { padding: '24px 32px 0', maxWidth: 900, margin: '0 auto' },
+  searchWrap: { padding: '24px 32px 0', maxWidth: 1400, margin: '0 auto' },
   searchForm: { display: 'flex', alignItems: 'center', background: '#12121e', border: '1px solid #2a2a3e', borderRadius: 12, padding: '4px 4px 4px 16px', gap: 8 },
   searchIcon: { fontSize: '1.1rem', color: '#4a4a6a', flexShrink: 0 },
   searchInput: { flex: 1, background: 'transparent', border: 'none', outline: 'none', color: '#e2e2f0', fontSize: '1rem', padding: '8px 0' },
