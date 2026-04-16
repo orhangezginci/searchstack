@@ -31,10 +31,10 @@ Open **http://localhost:3001** now. You will see an empty document library with 
 Switch to **http://localhost:3000** briefly and try two queries in the demo search bar:
 
 **`I have a hangover`**  
-Semantic finds Bloody Mary and Pho Bo. Keyword finds nothing — the word "hangover" doesn't appear in any recipe. That's the gap semantic search fills.
+Semantic finds Bloody Mary. Keyword finds nothing — "hangover" doesn't appear in any recipe title or description. That's the gap semantic search fills.
 
 **`szechuan`**  
-Keyword wins. Exact token match — surgical and fast. Semantic adds noise.
+Both engines match. Keyword finds the exact token; semantic confirms it. When both agree, hybrid boosts confidence — that's the correct answer and both engines got it.
 
 Your PDFs will get the same treatment once your ingestion service is running. The search logic is already wired — the frontend at port 3001 will behave exactly like this demo, just over your documents.
 
@@ -100,21 +100,21 @@ pymupdf==1.24.0
 pika==1.3.2
 python-multipart==0.0.9
 httpx==0.27.0
+fpdf2==2.7.9
 ```
 
 **`services/pdf-ingestion-service/main.py`**
 
 The file is split into two clearly marked sections:
 
-- **Core Service** — the essential part. Health check, document listing, PDF serving, and the `/ingest` endpoint that powers drag-and-drop upload in the frontend.
-- **Demo Extension** — optional. Adds `/seed-demo` and `/seed-demo/status` which power the **Load demo data** button. These download five open-access research papers automatically so you have something to search right away. In a production service you would remove this section entirely.
+- **Core Service** — the essential part. Health check, document listing, PDF serving, the `/ingest` endpoint that powers drag-and-drop upload, and `/reset` to wipe the knowledge base.
+- **Demo Extension** — optional. Adds `/seed-demo` and `/seed-demo/status` which power the **Load demo data** button. The five demo PDFs are generated at Docker build time (no network calls at runtime). In a production service you would remove this section entirely.
 
 ```python
 import copy
 import json
 import os
 import threading
-import time
 import uuid
 from pathlib import Path
 
@@ -136,10 +136,15 @@ app.add_middleware(
 
 RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "rabbitmq")
 EMBEDDING_URL = os.getenv("EMBEDDING_URL", "http://embedding-service:8001")
+QDRANT_URL = os.getenv("QDRANT_URL", "http://qdrant:6333")
+ELASTICSEARCH_URL = os.getenv("ELASTICSEARCH_URL", "http://elasticsearch:9200")
 EXCHANGE = "ingestion.events"
 
 PDFS_DIR = Path(os.getenv("PDFS_DIR", "/pdfs"))
 PDFS_DIR.mkdir(parents=True, exist_ok=True)
+
+_seed_lock: threading.Lock = threading.Lock()
+_seed_state: dict = {"state": "idle", "items": [], "error": None}
 
 
 # ── Shared helpers ─────────────────────────────────────────────────────────────
@@ -258,64 +263,56 @@ async def ingest_pdf(
     }
 
 
+@app.delete("/reset")
+def reset_knowledge_base(collection: str = "docs"):
+    """Delete all indexed documents and stored PDFs for a collection."""
+    errors = []
+
+    try:
+        httpx.delete(f"{QDRANT_URL}/collections/{collection}", timeout=15)
+    except Exception as e:
+        errors.append(f"qdrant: {e}")
+
+    try:
+        httpx.delete(f"{ELASTICSEARCH_URL}/{collection}", timeout=15)
+    except Exception as e:
+        errors.append(f"elasticsearch: {e}")
+
+    for pdf in PDFS_DIR.glob("*.pdf"):
+        pdf.unlink()
+
+    with _seed_lock:
+        _seed_state.update({"state": "idle", "items": [], "error": None})
+
+    return {"status": "ok" if not errors else "partial", "errors": errors}
+
+
 # ════════════════════════════════════════════════════════════════════════════════
 #  DEMO EXTENSION  —  optional, not required for a real service
 #  Powers the "Load demo data" button in the frontend.
-#  Downloads five open-access research papers and ingests them automatically.
+#  Ingests five PDFs that are pre-generated at build time by generate_demo_pdfs.py
+#  and bundled inside the Docker image. No network calls at runtime.
 #  Delete this section when you extend this service for production use.
 # ════════════════════════════════════════════════════════════════════════════════
 
+DEMO_PDFS_DIR = Path("/demo-pdfs")
+
 DEMO_DOCS = [
-    {
-        "id": "attention-is-all-you-need",
-        "label": "Attention Is All You Need (Vaswani et al., 2017)",
-        "pdf_urls": [
-            "https://arxiv.org/pdf/1706.03762v5",
-            "https://arxiv.org/pdf/1706.03762",
-        ],
-    },
-    {
-        "id": "bert-language-model",
-        "label": "BERT: Pre-training of Deep Bidirectional Transformers (Devlin et al., 2018)",
-        "pdf_urls": [
-            "https://arxiv.org/pdf/1810.04805",
-        ],
-    },
-    {
-        "id": "medpalm-clinical-nlp",
-        "label": "Large Language Models Encode Clinical Knowledge (Singhal et al., 2022)",
-        "pdf_urls": ["https://arxiv.org/pdf/2212.13138"],
-    },
-    {
-        "id": "biogpt-biomedical",
-        "label": "BioGPT: Generative Pre-trained Transformer for Biomedical Text (Luo et al., 2022)",
-        "pdf_urls": ["https://arxiv.org/pdf/2210.10341"],
-    },
-    {
-        "id": "clinical-bert",
-        "label": "ClinicalBERT: Modeling Clinical Notes for Hospital Readmission (Huang et al., 2019)",
-        "pdf_urls": ["https://arxiv.org/pdf/1904.05342"],
-    },
+    {"id": "attention-is-all-you-need",
+     "label": "Attention Mechanisms and Transformer Networks"},
+    {"id": "first-black-hole-image",
+     "label": "Black Holes and the Limits of Spacetime"},
+    {"id": "dqn-atari-games",
+     "label": "Learning Through Reward: Reinforcement Learning and Game Playing"},
+    {"id": "covid19-epidemiology",
+     "label": "How Infectious Diseases Spread: Epidemiology and Transmission Dynamics"},
+    {"id": "climate-tipping-points",
+     "label": "Climate Tipping Points and Feedback Loops"},
 ]
-
-_seed_lock: threading.Lock = threading.Lock()
-_seed_state: dict = {"state": "idle", "items": [], "error": None}
-
-
-def _download_pdf(urls: list[str]) -> bytes | None:
-    for url in urls:
-        try:
-            r = httpx.get(url, timeout=60, follow_redirects=True,
-                          headers={"User-Agent": "Mozilla/5.0"})
-            if r.status_code == 200 and r.content[:4] == b"%PDF":
-                return r.content
-        except Exception:
-            pass
-    return None
 
 
 def _run_seed_demo():
-    """Background task — download and ingest all demo documents."""
+    """Background task — ingest pre-generated demo PDFs from /demo-pdfs."""
     items = [{"id": d["id"], "label": d["label"], "state": "pending"} for d in DEMO_DOCS]
 
     with _seed_lock:
@@ -324,21 +321,12 @@ def _run_seed_demo():
     all_failed = True
 
     for i, demo in enumerate(DEMO_DOCS):
+        filename = f"{demo['id']}.pdf"
         with _seed_lock:
-            _seed_state["items"][i]["state"] = "downloading"
+            _seed_state["items"][i]["state"] = "ingesting"
 
         try:
-            pdf_bytes = _download_pdf(demo["pdf_urls"])
-            filename = f"{demo['id']}.pdf" if pdf_bytes else None
-
-            if not pdf_bytes:
-                with _seed_lock:
-                    _seed_state["items"][i].update({"state": "error", "error": "Could not download PDF"})
-                continue
-
-            with _seed_lock:
-                _seed_state["items"][i]["state"] = "ingesting"
-
+            pdf_bytes = (DEMO_PDFS_DIR / filename).read_bytes()
             result = process_pdf(pdf_bytes, filename, "docs")
 
             with _seed_lock:
@@ -375,6 +363,52 @@ def get_seed_demo_status():
         return copy.deepcopy(_seed_state)
 ```
 
+The demo PDFs are generated at build time by a separate script. Create it now:
+
+**`services/pdf-ingestion-service/generate_demo_pdfs.py`**
+
+```python
+"""
+Generates five original copyright-free PDFs and writes them to an output directory.
+Run at Docker build time — no network calls, no external dependencies beyond fpdf2.
+"""
+import sys
+from pathlib import Path
+from fpdf import FPDF
+
+OUTPUT_DIR = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("/demo-pdfs")
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def make_pdf(filename: str, pages: list[tuple[str, str]]):
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    for title, body in pages:
+        pdf.add_page()
+        pdf.set_font("Helvetica", "B", 16)
+        pdf.multi_cell(0, 10, title)
+        pdf.ln(4)
+        pdf.set_font("Helvetica", "", 11)
+        pdf.multi_cell(0, 7, body)
+    pdf.output(str(OUTPUT_DIR / filename))
+    print(f"Generated {filename}")
+
+
+# One entry per demo document: (filename, [(page_title, page_body), ...])
+DOCS = [
+    ("attention-is-all-you-need.pdf", [...]),   # Transformers
+    ("first-black-hole-image.pdf",    [...]),   # Black Holes
+    ("dqn-atari-games.pdf",           [...]),   # Reinforcement Learning
+    ("covid19-epidemiology.pdf",      [...]),   # Epidemiology
+    ("climate-tipping-points.pdf",    [...]),   # Climate
+]
+
+for fname, pages in DOCS:
+    make_pdf(fname, pages)
+```
+
+> The full content of `generate_demo_pdfs.py` (with the actual page text for all five documents) is in [`examples/pdf-ingestion/generate_demo_pdfs.py`](../examples/pdf-ingestion/generate_demo_pdfs.py). Copy it directly — the text is what makes semantic vs keyword contrast work well.
+
 **`services/pdf-ingestion-service/Dockerfile`**
 
 ```dockerfile
@@ -382,9 +416,13 @@ FROM python:3.11-slim
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+COPY generate_demo_pdfs.py .
+RUN python3 generate_demo_pdfs.py /demo-pdfs
 COPY . .
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8006"]
 ```
+
+The `generate_demo_pdfs.py` step runs once at build time and bakes the five demo PDFs into the image. No network calls happen at runtime — `Load demo data` reads them straight from disk.
 
 ---
 
@@ -400,14 +438,19 @@ This is the only existing file you modify. Add one block:
     depends_on:
       rabbitmq:
         condition: service_healthy
+      embedding-service:
+        condition: service_healthy
     environment:
       - PYTHONUNBUFFERED=1
       - RABBITMQ_HOST=rabbitmq
+      - QDRANT_URL=http://qdrant:6333
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
     healthcheck:
       test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8006/health')"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 60s
 ```
 
 Start it:
@@ -459,23 +502,21 @@ Ingest more files the same way with either option.
 
 ## Optional: Load demo data to see the search in action
 
-> **This step is not required.** Your service works — you can ingest any PDF you already have. This section seeds a handful of open-access documents automatically so you can try the search immediately, without hunting for test files.
+> **This step is not required.** Your service works — you can ingest any PDF you already have. This section seeds five documents automatically so you can try the search immediately, without hunting for test files.
 
-Open **http://localhost:3001** and click **Load demo data**. The button downloads and indexes five open-access papers from arXiv — two foundational NLP papers and three biomedical AI papers — directly through your ingestion service. Progress is shown per document.
+Open **http://localhost:3001** and click **Load demo data**. The five demo PDFs were baked into the Docker image at build time by `generate_demo_pdfs.py` — no network calls happen. Each document loads and indexes in a few seconds.
 
-If the ingestion service is not reachable the UI will tell you clearly — there is nothing else to configure.
+**Why these particular documents?** They cover five unrelated topics (Transformers, Black Holes, Reinforcement Learning, Epidemiology, Climate), which makes the difference between semantic and keyword search immediately obvious:
 
-**Why these particular documents?** They make the difference between semantic and keyword search immediately obvious:
+| Query | Keyword badge | Semantic badge | What it shows |
+|---|---|---|---|
+| `event horizon telescope` | ✓ | ✓ | exact technical name — both engines match |
+| `self-attention mechanism transformer` | ✓ | ✓ | domain terminology present verbatim |
+| `presymptomatic transmission` | ✓ | ✓ | medical term found literally |
+| `how does a star collapse into a black hole` | ✗ | ✓ | semantic understands the concept, keyword finds nothing |
+| `virus spreads before symptoms appear` | ✗ | ✓ | natural language — no exact match in any document |
 
-| Query | What keyword finds | What semantic finds |
-|---|---|---|
-| `doctors answering medical questions` | nothing | MedPaLM clinical knowledge paper |
-| `reading hospital records` | nothing | ClinicalBERT paper |
-| `biomedical text generation` | BioGPT paper | BioGPT paper |
-| `self-attention mechanism` | the Transformer paper | the Transformer paper |
-| `attention mechanism` | both ML papers | both ML papers |
-
-Semantic wins on the paraphrased queries. Keyword wins (or ties) on exact terminology. Both answers are correct — they just answer different user intents.
+Semantic wins on paraphrased queries. Keyword fires only when the exact terms appear. Both are correct — they answer different user intents.
 
 ---
 

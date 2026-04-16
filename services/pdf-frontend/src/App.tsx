@@ -297,13 +297,15 @@ export default function App() {
 
   const mergedResults: Array<SearchResult & { methods: string[] }> = response
     ? (() => {
-        const semanticIds = new Set(response.semantic.map(r => r.id))
-        const keywordIds  = new Set(response.keyword.map(r => r.id))
+        const key = (r: SearchResult) =>
+          `${String(r.payload.source ?? '')}:${String(r.payload.page ?? '')}`
+        const semanticKeys = new Set(response.semantic.map(key))
+        const keywordKeys  = new Set(response.keyword.map(key))
         return response.hybrid.map(r => ({
           ...r,
           methods: [
-            semanticIds.has(r.id) ? 'semantic' : '',
-            keywordIds.has(r.id)  ? 'keyword'  : '',
+            semanticKeys.has(key(r)) ? 'semantic' : '',
+            keywordKeys.has(key(r))  ? 'keyword'  : '',
           ].filter(Boolean),
         }))
       })()
@@ -729,9 +731,20 @@ function ResultCard({
               p.{page}
             </span>
           )}
-          {result.methods.map(m => (
-            <span key={m} style={s.methodBadge}>{m}</span>
-          ))}
+          {result.methods.map(m => {
+            const isKeyword = m === 'keyword'
+            return (
+              <span
+                key={m}
+                style={{
+                  ...s.methodBadge,
+                  background: isKeyword ? '#2a1a00' : '#0a1a2e',
+                  color:      isKeyword ? '#f59e0b' : '#60a5fa',
+                  borderColor: isKeyword ? '#f59e0b55' : '#60a5fa55',
+                }}
+              >{m}</span>
+            )
+          })}
         </div>
         <div style={s.resultSnippet}>
           {result.snippet ? <HighlightedText html={result.snippet} /> : fallback}
@@ -982,7 +995,7 @@ const s: Record<string, React.CSSProperties> = {
   resultMeta: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' as const, marginBottom: 8 },
   resultDocName: { fontWeight: 600, fontSize: '0.88rem', color: '#d0d0e8' },
   resultPageChip: { fontSize: '0.72rem', fontWeight: 600, padding: '2px 8px', borderRadius: 10, border: '1px solid' },
-  methodBadge: { fontSize: '0.65rem', fontWeight: 600, padding: '2px 7px', borderRadius: 10, background: '#1e1e30', color: '#4a4a6a', textTransform: 'uppercase' as const, letterSpacing: '0.05em', border: '1px solid #2a2a3e' },
+  methodBadge: { fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px', borderRadius: 10, textTransform: 'uppercase' as const, letterSpacing: '0.06em', border: '1px solid' },
   resultSnippet: { fontSize: '0.88rem', color: '#9090b0', lineHeight: 1.7, wordBreak: 'break-word' as const },
   resultRight: { display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8, flexShrink: 0 },
   resultScore: { fontSize: '0.72rem', color: '#4a4a6a', fontVariantNumeric: 'tabular-nums' },

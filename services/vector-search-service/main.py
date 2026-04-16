@@ -48,8 +48,7 @@ def on_message(ch, method, properties, body):
 
 
 def start_consumer():
-    retries = 10
-    while retries > 0:
+    while True:
         try:
             connection = pika.BlockingConnection(
                 pika.ConnectionParameters(host=RABBITMQ_HOST)
@@ -66,9 +65,8 @@ def start_consumer():
             print("[vector-search] Waiting for messages...")
             channel.start_consuming()
         except Exception as e:
-            retries -= 1
             print(
-                f"[vector-search] RabbitMQ not ready, retrying in 5s... ({e})"
+                f"[vector-search] RabbitMQ connection lost, retrying in 5s... ({e})"
             )
             time.sleep(5)
 

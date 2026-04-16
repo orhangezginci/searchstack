@@ -96,15 +96,11 @@ _SNIPPET_STOPWORDS = {"a", "an", "the", "at", "in", "on", "of", "for", "to", "is
                       "und", "oder", "mit", "von", "zu", "im", "am", "auf"}
 
 
-def extract_snippet(text: str, query: str, max_len: int = 350) -> str:
-    """Return the most query-relevant passage from text with matched terms in <mark> tags."""
-    # Use all significant terms (≥4 chars, not stopwords) for passage scoring …
+def extract_snippet(text: str, query: str, highlight: bool = False, max_len: int = 350) -> str:
+    """Return the most query-relevant passage from text, with <mark> tags only when highlight=True."""
+    # Use all significant terms (≥4 chars, not stopwords) for passage scoring
     score_terms = [t for t in re.findall(r'\w+', query.lower())
                    if len(t) >= 4 and t not in _SNIPPET_STOPWORDS]
-
-    # … but only highlight the 3 most distinctive (longest) terms to avoid
-    # visual noise that makes semantic results look like keyword matches.
-    highlight_terms = sorted(score_terms, key=len, reverse=True)[:3]
 
     # Split text into candidate lines (newlines + bullet chars)
     raw_lines = re.split(r'[\n•]', text)
@@ -129,23 +125,28 @@ def extract_snippet(text: str, query: str, max_len: int = 350) -> str:
     if len(snippet) > max_len:
         snippet = snippet[:max_len].rsplit(' ', 1)[0] + '…'
 
-    # Wrap only the top highlight terms in <mark> (longest first to avoid nesting)
-    for term in highlight_terms:
-        snippet = re.sub(
-            rf'(?<!\w)({re.escape(term)})(?!\w)',
-            r'<mark>\1</mark>',
-            snippet,
-            flags=re.IGNORECASE,
-        )
+    if highlight and score_terms:
+        # Highlight the 3 most distinctive (longest) terms.
+        # Use a 5-char prefix so stemmed forms are caught
+        # (e.g. "silently" root "silen" matches "Silent", "silence").
+        highlight_terms = sorted(score_terms, key=len, reverse=True)[:3]
+        highlight_roots = [t[:5] if len(t) > 5 else t for t in highlight_terms]
+        for root in highlight_roots:
+            snippet = re.sub(
+                rf'(?<!\w)({re.escape(root)}\w*)(?!\w)',
+                r'<mark>\1</mark>',
+                snippet,
+                flags=re.IGNORECASE,
+            )
 
     return snippet
 
 
-def add_snippets(results: list[dict], query: str) -> list[dict]:
+def add_snippets(results: list[dict], query: str, highlight: bool = False) -> list[dict]:
     for r in results:
         text = r.get('payload', {}).get('text', '')
         if text:
-            r['snippet'] = extract_snippet(text, query)
+            r['snippet'] = extract_snippet(text, query, highlight=highlight)
     return results
 
 
@@ -196,9 +197,15 @@ async def search(request: SearchRequest):
         for key, score in sorted(fused.items(), key=lambda x: x[1], reverse=True)[:request.limit]
     ]
 
-    add_snippets(semantic_results, request.query)
-    add_snippets(keyword_results, request.query)
-    add_snippets(hybrid_results, request.query)
+    keyword_titles = {r["payload"].get("title", r["id"]) for r in keyword_results}
+
+    add_snippets(semantic_results, request.query, highlight=False)
+    add_snippets(keyword_results, request.query, highlight=True)
+    for r in hybrid_results:
+        has_keyword = r["payload"].get("title", r["id"]) in keyword_titles
+        r["snippet"] = extract_snippet(
+            r["payload"].get("text", ""), request.query, highlight=has_keyword
+        )
 
     return {
         "query": request.query,

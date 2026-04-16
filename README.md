@@ -104,10 +104,40 @@ Every use case follows the same pattern: **one new service, one block in docker-
 
 ## Included demos
 
-The default setup ships with three reference implementations of the pattern. These are not toy examples — they are the same architecture you will use for your own data.
+The default setup ships with four reference implementations of the pattern. These are not toy examples — they are the same architecture you will use for your own data.
 
 ### Recipe search
-Semantic vs keyword vs hybrid, side by side. Type `I have a hangover`: semantic finds Bloody Mary, keyword finds nothing. Type `street food quick and spicy`: semantic picks Vindaloo, keyword picks Noodle Soup, hybrid correctly promotes Pad Thai — the one result both engines agreed on.
+Semantic vs keyword vs hybrid, side by side.
+
+| Query | Semantic | Keyword | What it shows |
+|---|---|---|---|
+| `I have a hangover` | ✓ Bloody Mary | ✗ nothing | semantic understands context, keyword finds no literal match |
+| `szechuan` | ✓ Szechuan Mapo Tofu | ✓ Szechuan Mapo Tofu | both badges — exact word in the title |
+| `pad thai` | ✓ Pad Thai | ✓ Pad Thai | both badges — when engines agree, hybrid boosts confidence |
+| `something warm and comforting on a cold evening` | ✓ Hot Toddy | ✗ nothing | pure semantic — no keyword in the collection matches this |
+
+### PDF search — http://localhost:3001
+The PDF search UI ships out of the box and is ready and waiting at :3001. To make it functional you need to add a PDF ingestion service — that is exactly what the tutorial walks you through.
+
+Once you have completed the tutorial, the UI gives you:
+
+- **Load demo data** — one click seeds five original documents across diverse topics (Transformers, Black Holes, Reinforcement Learning, Epidemiology, Climate)
+- **Upload your own PDFs** — drag and drop or file picker, page-level chunking and embedding happens automatically
+- **Semantic + keyword + hybrid** — every result shows which engines matched it (blue `semantic` / amber `keyword` badges)
+- **Inline PDF viewer** — click any result to open the source PDF at the exact page
+- **Clear knowledge base** — one button wipes Qdrant + Elasticsearch so you can start fresh
+
+👉 **[Follow the tutorial to wire it up](docs/tutorial.md)**
+
+Example queries once demo data is loaded:
+
+| Query | Semantic | Keyword | What it shows |
+|---|---|---|---|
+| `event horizon telescope` | ✓ black hole p.2 | ✓ black hole p.2 | both badges — exact technical name in the text |
+| `self-attention mechanism transformer` | ✓ transformers p.1 | ✓ transformers p.1 | both badges — domain terminology matches exactly |
+| `presymptomatic transmission` | ✓ epidemiology p.2 | ✓ epidemiology p.2 | both badges — medical term present verbatim |
+| `how does a star collapse into a black hole` | ✓ black hole p.1 | ✗ nothing | semantic only — concept understood, words not found |
+| `virus spreads before symptoms appear` | ✓ epidemiology p.2 | ✗ nothing | semantic only — natural language, no exact match |
 
 ### Image search
 CLIP-based natural language retrieval over 50 photos with no filenames or tags. Type `dramatic stormy ocean`. Keyword returns zero — there is nothing to tokenise. CLIP finds the right photos by meaning.
@@ -135,13 +165,12 @@ Open **http://localhost:3000** — you now have a fully working search system.
 
 Try these queries to see the three engines compared live:
 
-| Query | Semantic | Keyword | Hybrid |
+| Query | Semantic | Keyword | What it shows |
 |---|---|---|---|
-| `I have a hangover` | Bloody Mary, Pho Bo | ✗ nothing | — |
-| `street food quick and spicy` | Vindaloo | Noodle Soup | ✓ **Pad Thai** |
-| `szechuan` | noisy | ✓ exact match | keyword wins |
-
-`street food quick and spicy` is the clearest benchmark: neither engine gets it right alone. Hybrid promotes Pad Thai — the one result both engines independently ranked — and that's the correct answer.
+| `I have a hangover` | ✓ Bloody Mary | ✗ nothing | semantic understands intent, keyword is lost |
+| `szechuan` | ✓ Szechuan Mapo Tofu | ✓ exact match | keyword wins on a proper noun |
+| `pad thai` | ✓ Pad Thai | ✓ Pad Thai | hybrid boosts confidence when both engines agree |
+| `something warm and comforting on a cold evening` | ✓ Hot Toddy | ✗ nothing | pure semantic — no recipe title contains these words |
 
 ---
 
@@ -151,11 +180,11 @@ Try these queries to see the three engines compared live:
 
 | What you want | Where to add it |
 |---|---|
-| New content type (PDFs, emails…) | `services/your-ingestion-service/` |
+| New content type (emails, wikis…) | `services/your-ingestion-service/` |
 | New search collection | `collection` param on `/search` — nothing to configure |
 | Different embedding model | `services/embedding-service/main.py` — one line |
 | Different vector database | `services/vector-search-service/adapter.py` — swap implementation |
-| PDF ingest + search UI | already running at **http://localhost:3001** — build a PDF ingestion service and the UI is ready to use immediately |
+| PDF search | UI already running at **http://localhost:3001** — follow the tutorial to add the ingestion service |
 | Custom frontend | call `POST /search` with your collection name |
 
 ### The pattern
@@ -172,20 +201,23 @@ Try these queries to see the three engines compared live:
    all work on your content automatically
 ```
 
-### Example: PDF search
+### The contract
 
-Your ingestion service publishes one message per page:
+Every ingestion service publishes one message per chunk to the `ingestion.events` RabbitMQ fanout exchange:
 
 ```json
-{ "text": "...", "title": "report.pdf — p.4", "collection": "pdfs" }
+{
+  "collection": "my-docs",
+  "id": "stable-uuid",
+  "text": "...",
+  "vector": [0.1, 0.2, ...],
+  "metadata": { "title": "report.pdf — p.4", "source": "report.pdf", "page": 4 }
+}
 ```
 
-Search Arena automatically:
-- embeds the text into a 768-dimensional vector
-- indexes it in Qdrant + Elasticsearch
-- makes it searchable via `POST /search` with semantic, keyword, and hybrid ranking
+Search Arena automatically indexes it into Qdrant + Elasticsearch and makes it searchable via `POST /search` with semantic, keyword, and hybrid ranking. No additional wiring required.
 
-No additional wiring required.
+The tutorial walks you through building a `pdf-ingestion-service` that implements this pattern — `services/pdf-ingestion-service/` in the repo is the finished reference implementation.
 
 👉 Full walkthrough: [docs/tutorial.md](docs/tutorial.md)
 
@@ -198,26 +230,29 @@ If you're curious how it works internally:
 ```mermaid
 flowchart TD
     Browser["Browser :3000\nReact · TypeScript · Three.js"]
-    GenericUI["pdf-frontend :3001\nPDF upload · search · inline viewer"]
+    PDFFrontend["pdf-frontend :3001\nPDF upload · search · inline viewer"]
     Gateway["api-gateway :8000\nFastAPI · Redis cache"]
     Redis["Redis :6379\nCLIP vector cache"]
     Embed["embedding-service :8001\nall-mpnet-base-v2 · 768d"]
     Vector["vector-search-service :8002\nQdrant adapter · PCA"]
     Keyword["keyword-search-service :8003\nElasticsearch BM25"]
-    Ingest["ingestion-service :8004"]
+    Ingest["ingestion-service :8004\ndemo recipe data"]
     CLIP["clip-embedding-service :8005\nCLIP ViT-B/32 · 512d"]
+    PDFIngest["pdf-ingestion-service :8006\nPDF → chunks → embeddings\n(added in tutorial)"]
     MQ["RabbitMQ\nfanout exchange"]
     Qdrant["Qdrant :6333"]
     ES["Elasticsearch :9200"]
 
     Browser -->|REST| Gateway
-    GenericUI -->|REST| Gateway
+    PDFFrontend -->|upload / search| Gateway
+    PDFFrontend -->|ingest PDFs| PDFIngest
     Gateway <-->|cache| Redis
     Gateway -->|embed query| Embed
     Gateway -->|embed image| CLIP
     Gateway -->|vector search| Vector
     Gateway -->|keyword search| Keyword
     Ingest -->|publish| MQ
+    PDFIngest -->|embed + publish| MQ
     MQ -->|consume| Vector
     MQ -->|consume| Keyword
     Vector --> Qdrant
@@ -229,13 +264,14 @@ flowchart TD
 | Service | Port | Role |
 |---|---|---|
 | frontend | 3000 | Live search UI with 3D embedding space |
-| pdf-frontend | 3001 | PDF upload, search, inline viewer with page-level results |
+| pdf-frontend | 3001 | PDF library, upload, search, inline viewer with per-result method badges |
 | api-gateway | 8000 | Unified search API, hybrid ranking |
 | embedding-service | 8001 | Text → 768d vectors (all-mpnet-base-v2) |
 | vector-search-service | 8002 | Qdrant adapter, PCA projection |
 | keyword-search-service | 8003 | Elasticsearch BM25 |
-| ingestion-service | 8004 | Demo data ingestion via RabbitMQ |
+| ingestion-service | 8004 | Recipe demo data ingestion via RabbitMQ |
 | clip-embedding-service | 8005 | Image + text → 512d CLIP vectors |
+| pdf-ingestion-service | 8006 | PDF → page chunks → embeddings → RabbitMQ _(added in tutorial)_ |
 | redis | 6379 | Embedding vector cache |
 | qdrant | 6333 | Vector store (persisted) |
 | elasticsearch | 9200 | Keyword index (persisted) |
@@ -245,18 +281,19 @@ flowchart TD
 
 | | URL |
 |---|---|
-| App | http://localhost:3000 |
-| Generic UI | http://localhost:3001 |
+| Recipe + image search | http://localhost:3000 |
+| PDF search | http://localhost:3001 |
+| PDF ingestion API | http://localhost:8006/docs _(after tutorial)_ |
+| API Swagger | http://localhost:8000/docs |
 | RabbitMQ | http://localhost:15672 (guest / guest) |
 | Qdrant | http://localhost:6333/dashboard |
 | Elasticsearch | http://localhost:9200 |
-| API Swagger | http://localhost:8000/docs |
 
 ---
 
 ## Roadmap
 
-- PDF ingestion pipeline out of the box
+- ~~PDF ingestion pipeline out of the box~~ — shipped: tutorial + reference implementation in `services/pdf-ingestion-service/`, UI ready at :3001
 - Config-driven setup (reduce custom code to near zero)
 - `create-search-arena` CLI — spin up your own search system in seconds
 

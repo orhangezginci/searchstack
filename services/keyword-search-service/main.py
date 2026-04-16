@@ -36,8 +36,7 @@ def on_message(ch, method, properties, body):
 
 
 def start_consumer():
-    retries = 10
-    while retries > 0:
+    while True:
         try:
             connection = pika.BlockingConnection(
                 pika.ConnectionParameters(host=RABBITMQ_HOST)
@@ -54,9 +53,8 @@ def start_consumer():
             print("[keyword-search] Waiting for messages...")
             channel.start_consuming()
         except Exception as e:
-            retries -= 1
             print(
-                f"[keyword-search] RabbitMQ not ready, retrying in 5s... ({e})"
+                f"[keyword-search] RabbitMQ connection lost, retrying in 5s... ({e})"
             )
             time.sleep(5)
 
@@ -83,6 +81,7 @@ def search(request: SearchRequest):
                 "multi_match": {
                     "query": request.query,
                     "fields": ["title^3", "text"],
+                    "operator": "and",
                 }
             },
             "size": request.limit,
