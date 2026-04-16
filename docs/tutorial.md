@@ -570,6 +570,36 @@ You published messages. The core did the rest. This is the same path the recipe 
 
 ---
 
+## Troubleshooting
+
+**Keyword badge never appears, only semantic results show**
+
+Elasticsearch refuses to allocate the `docs` index shard when your disk is above 90% full. Semantic search still works because it uses Qdrant, but keyword indexing silently fails.
+
+Check:
+
+```bash
+curl -s "http://localhost:9200/_cat/indices?v"
+```
+
+If `docs` shows `red` health with blank `docs.count`, run:
+
+```bash
+curl -X PUT "http://localhost:9200/_cluster/settings" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "persistent": {
+      "cluster.routing.allocation.disk.watermark.low": "97%",
+      "cluster.routing.allocation.disk.watermark.high": "98%",
+      "cluster.routing.allocation.disk.watermark.flood_stage": "99%"
+    }
+  }'
+```
+
+The shard will allocate within a few seconds and keyword indexing will resume automatically. Free up disk space when you can — this setting is a local dev workaround, not a production recommendation.
+
+---
+
 ## Where to go next
 
 The same pattern works for any content type. The only thing that changes is how you read and chunk the content:
