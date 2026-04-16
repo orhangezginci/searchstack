@@ -23,10 +23,15 @@ app.add_middleware(
 
 RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "rabbitmq")
 EMBEDDING_URL = os.getenv("EMBEDDING_URL", "http://embedding-service:8001")
+QDRANT_URL = os.getenv("QDRANT_URL", "http://qdrant:6333")
+ELASTICSEARCH_URL = os.getenv("ELASTICSEARCH_URL", "http://elasticsearch:9200")
 EXCHANGE = "ingestion.events"
 
 PDFS_DIR = Path(os.getenv("PDFS_DIR", "/pdfs"))
 PDFS_DIR.mkdir(parents=True, exist_ok=True)
+
+_seed_lock: threading.Lock = threading.Lock()
+_seed_state: dict = {"state": "idle", "items": [], "error": None}
 
 
 # ── Shared helpers ─────────────────────────────────────────────────────────────
@@ -145,6 +150,34 @@ async def ingest_pdf(
     }
 
 
+@app.delete("/reset")
+def reset_knowledge_base(collection: str = "docs"):
+    """Delete all indexed documents and stored PDFs for a collection."""
+    errors = []
+
+    # Delete Qdrant collection (404 = already gone, both fine)
+    try:
+        httpx.delete(f"{QDRANT_URL}/collections/{collection}", timeout=15)
+    except Exception as e:
+        errors.append(f"qdrant: {e}")
+
+    # Delete Elasticsearch index (404 = already gone, both fine)
+    try:
+        httpx.delete(f"{ELASTICSEARCH_URL}/{collection}", timeout=15)
+    except Exception as e:
+        errors.append(f"elasticsearch: {e}")
+
+    # Remove stored PDFs
+    for pdf in PDFS_DIR.glob("*.pdf"):
+        pdf.unlink()
+
+    # Reset seed state so Load demo data can run again
+    with _seed_lock:
+        _seed_state.update({"state": "idle", "items": [], "error": None})
+
+    return {"status": "ok" if not errors else "partial", "errors": errors}
+
+
 # ════════════════════════════════════════════════════════════════════════════════
 #  DEMO EXTENSION  —  optional, not required for a real service
 #  Powers the "Load demo data" button in the frontend.
@@ -167,10 +200,6 @@ DEMO_DOCS = [
     {"id": "climate-tipping-points",
      "label": "Climate Tipping Points and Feedback Loops"},
 ]
-
-_seed_lock: threading.Lock = threading.Lock()
-_seed_state: dict = {"state": "idle", "items": [], "error": None}
-
 
 def _run_seed_demo():
     """Background task — ingest pre-generated demo PDFs from /demo-pdfs."""

@@ -110,6 +110,7 @@ export default function App() {
   const [dragOver, setDragOver]   = useState(false)
   const [seedStatus, setSeedStatus] = useState<SeedStatus | null>(null)
   const [seedError, setSeedError]   = useState<string | null>(null)
+  const [resetting, setResetting]   = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
   async function refreshDocs() {
@@ -159,6 +160,21 @@ export default function App() {
         `Cannot reach the PDF ingestion service at ${INGEST_URL}.\n` +
         'Make sure your pdf-ingestion-service is running (see tutorial step 6).',
       )
+    }
+  }
+
+  async function resetKnowledgeBase() {
+    if (!window.confirm('Delete all indexed documents and stored PDFs? This cannot be undone.')) return
+    setResetting(true)
+    try {
+      await fetch(`${INGEST_URL}/reset`, { method: 'DELETE' })
+      setDocs([])
+      setResponse(null)
+      setViewer(null)
+      setSeedStatus(null)
+      setSeedError(null)
+    } finally {
+      setResetting(false)
     }
   }
 
@@ -407,6 +423,8 @@ export default function App() {
                   onOpen={doc => setViewer({ doc, pageNumber: 1, result: { id: '', score: 0, payload: {} }, query: '' })}
                   onSeed={startSeedDemo}
                   seeding={seedStatus?.state === 'running'}
+                  onReset={resetKnowledgeBase}
+                  resetting={resetting}
                 />
                 {(seedStatus || seedError) && (
                   <SeedPanel
@@ -611,6 +629,8 @@ function DocLibrary({
   onOpen,
   onSeed,
   seeding,
+  onReset,
+  resetting,
 }: {
   docs: Doc[]
   ingesting: string[]
@@ -618,6 +638,8 @@ function DocLibrary({
   onOpen: (doc: Doc) => void
   onSeed: () => void
   seeding: boolean
+  onReset: () => void
+  resetting: boolean
 }) {
   return (
     <div>
@@ -625,8 +647,11 @@ function DocLibrary({
         <span style={s.libraryCount}>{docs.length} document{docs.length !== 1 ? 's' : ''}</span>
         <div style={{ display: 'flex', gap: 8 }}>
           <button style={s.libraryAddBtn} onClick={onAdd}>+ Add more</button>
-          <button style={s.seedBtn} onClick={onSeed} disabled={seeding}>
+          <button style={s.seedBtn} onClick={onSeed} disabled={seeding || resetting}>
             {seeding ? 'Loading demo data…' : 'Load demo data'}
+          </button>
+          <button style={s.resetBtn} onClick={onReset} disabled={resetting || seeding}>
+            {resetting ? 'Clearing…' : 'Clear'}
           </button>
         </div>
       </div>
@@ -895,6 +920,7 @@ const s: Record<string, React.CSSProperties> = {
   emptyLibrarySub: { margin: '0 0 24px', color: '#6b6b8a', lineHeight: 1.7, fontSize: '0.95rem' },
   emptyLibraryBtn: { padding: '12px 28px', borderRadius: 10, background: '#7c3aed', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '0.95rem', fontWeight: 600 },
   seedBtn: { padding: '12px 28px', borderRadius: 10, background: 'transparent', color: '#a78bfa', border: '1px solid #4c1d95', cursor: 'pointer', fontSize: '0.95rem', fontWeight: 600 },
+  resetBtn: { padding: '6px 14px', borderRadius: 6, background: 'transparent', border: '1px solid #4a1a1a', color: '#f87171', cursor: 'pointer', fontSize: '0.82rem' },
   emptyLibrarySeedHint: { margin: '16px 0 0', color: '#3a3a5a', fontSize: '0.78rem', maxWidth: 380, lineHeight: 1.6 },
 
   // Seed panel
