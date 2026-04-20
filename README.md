@@ -1,8 +1,8 @@
-# Search Arena
+# SearchStack
 
 **Not a library. Not a framework. A git clone.**
 
-Search Arena is a ready-to-run search backend with semantic, keyword, and hybrid search — extend it by adding one ingestion service for your data. Designed for real-world use cases, not demos.
+SearchStack is a ready-to-run search backend with semantic, keyword, and hybrid search — extend it by adding one ingestion service for your data. Designed for real-world use cases, not demos.
 
 No SDK. No framework lock-in. No hidden magic.
 
@@ -12,8 +12,8 @@ No SDK. No framework lock-in. No hidden magic.
 - Done
 
 ```bash
-git clone https://github.com/orhangezginci/search-arena.git
-cd search-arena
+git clone https://github.com/orhangezginci/searchstack.git
+cd searchstack
 docker compose up -d --build
 # open http://localhost:3000
 # you're searching in ~3 minutes
@@ -21,7 +21,7 @@ docker compose up -d --build
 
 > No library to install. No framework to learn. No glue code to write.
 
-Most semantic search setups require stitching together embeddings, vector databases, keyword search, and APIs yourself. Search Arena gives you that entire stack already wired. You only add your data pipeline.
+Most semantic search setups require stitching together embeddings, vector databases, keyword search, and APIs yourself. SearchStack gives you that entire stack already wired. You only add your data pipeline.
 
 No schema design. No search tuning. No ranking logic. It just works.
 
@@ -56,14 +56,14 @@ Type natural language. CLIP matches by visual semantics, not metadata.
 
 ## Mental Model
 
-Search Arena works through one simple idea:
+SearchStack works through one simple idea:
 
 > You publish documents → everything else happens automatically
 
 Think of it as a search engine you plug your data into.
 
 ```
-Search Arena = Core  +  Your Pipeline
+SearchStack = Core  +  Your Pipeline
 
 Core (runs out of the box):
   Embeddings       → converts any text to vectors
@@ -215,7 +215,7 @@ Every ingestion service publishes one message per chunk to the `ingestion.events
 }
 ```
 
-Search Arena automatically indexes it into Qdrant + Elasticsearch and makes it searchable via `POST /search` with semantic, keyword, and hybrid ranking. No additional wiring required.
+SearchStack automatically indexes it into Qdrant + Elasticsearch and makes it searchable via `POST /search` with semantic, keyword, and hybrid ranking. No additional wiring required.
 
 The tutorial walks you through building a `pdf-ingestion-service` that implements this pattern — `services/pdf-ingestion-service/` in the repo is the finished reference implementation.
 
@@ -295,6 +295,6 @@ flowchart TD
 
 - ~~PDF ingestion pipeline out of the box~~ — shipped: tutorial + reference implementation in `services/pdf-ingestion-service/`, UI ready at :3001
 - Config-driven setup (reduce custom code to near zero)
-- `create-search-arena` CLI — spin up your own search system in seconds
+- `create-searchstack` CLI — spin up your own search system in seconds
 
 See [ROADMAP.md](ROADMAP.md) for the full plan.

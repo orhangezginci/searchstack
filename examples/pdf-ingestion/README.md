@@ -1,16 +1,16 @@
 # Example: PDF Ingestion Service
 
-Add semantic search over your own PDFs to Search Arena in 5 steps.
+Add semantic search over your own PDFs to SearchStack in 5 steps.
 
 For the full explanation of how and why this works, see [docs/tutorial.md](../../docs/tutorial.md).
 
 ---
 
-## 1. Clone and start Search Arena
+## 1. Clone and start SearchStack
 
 ```bash
-git clone https://github.com/orhangezginci/search-arena.git
-cd search-arena
+git clone https://github.com/orhangezginci/searchstack.git
+cd searchstack
 docker compose up -d --build
 ```
 
@@ -23,7 +23,7 @@ curl http://localhost:8000/health
 # {"status":"ok","service":"api-gateway"}
 ```
 
-Open **http://localhost:3000** — you should see the Search Arena UI with the recipe demo working.
+Open **http://localhost:3000** — you should see the SearchStack UI with the recipe demo working.
 
 ---
 

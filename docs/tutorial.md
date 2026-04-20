@@ -1,6 +1,6 @@
 # Tutorial: Build a PDF Ingestion Service
 
-**What you will build:** a PDF ingestion service that feeds your documents into Search Arena.  
+**What you will build:** a PDF ingestion service that feeds your documents into SearchStack.  
 **What is already done:** the PDF search frontend at **http://localhost:3001** — drag-and-drop upload, a document library, a search bar, and a built-in PDF viewer that jumps to the matched page — is already running and waiting for your service.  
 **What you will touch:** one new directory, one block in `docker-compose.yml`. Nothing else.  
 **Prerequisites:** Docker, Docker Compose, `curl`, any PDF file.
@@ -10,8 +10,8 @@
 ## 1. Run it
 
 ```bash
-git clone https://github.com/orhangezginci/search-arena.git
-cd search-arena
+git clone https://github.com/orhangezginci/searchstack.git
+cd searchstack
 docker compose up -d --build
 ```
 
@@ -612,7 +612,7 @@ The same pattern works for any content type. The only thing that changes is how 
 | Word docs | `python-docx` | paragraphs |
 | Notion export | markdown parser | sections |
 
-In every case: read → chunk → publish to `ingestion.events` with your `collection` name. Search Arena handles the rest.
+In every case: read → chunk → publish to `ingestion.events` with your `collection` name. SearchStack handles the rest.
 
 ---
 
